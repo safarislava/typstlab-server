@@ -1,40 +1,47 @@
-# TypstLab
+# TypstLab Server
 
-**TypstLab** is a collaborative, offline-first interactive document editing platform. It merges the document-design simplicity of **Microsoft Word**, the scope model of **Jupyter Notebooks**, and the unparalleled typesetting quality of **Typst** — powered by a **Go** backend and a **PWA** frontend.
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Go](https://img.shields.io/badge/Go-00ADD8?style=flat&logo=go&logoColor=white)](https://go.dev/)
+[![Chi](https://img.shields.io/badge/Chi-008080?style=flat&logo=go&logoColor=white)](https://github.com/go-chi/chi)
 
----
+**TypstLab Server** is the server-side component of the TypstLab collaborative editing platform. Built with **Go**, it acts as the central coordinator for real-time collaboration, document state synchronization (using CRDTs), and data persistence.
 
-## ✨ Vision & Key Concepts
-
-1. **User-friendly**: A fluid visual editing experience that doesn't hide the underlying power of Typst. It features autocomplete, linting, error diagnostics, and interactive tooltips (similar to the official Typst Web App) directly inline.
-2. **Notebook Hybrid**: Break your documents into interactive cells of text or code.
-3. **True Offline-First**: Sync and collaborate without a server connection. Typst is compiled directly in the browser via **WebAssembly**. All modifications are tracked locally via **CRDT** and synced seamlessly when connectivity is restored.
-4. **Cooperative Development**: Real-time collaborative sessions over WebSockets/WebRTC with cursors, presence indicators, and conflict-free version merging.
+For the client-side application, see the [frontend repository](https://github.com/safarislava/typstlab-app) (or equivalent frontend repo).
 
 ---
 
-## 🛠 Proposed Tech Stack
+## 🏗 Backend Architecture & Responsibilities
 
-### Frontend (Progressive Web App)
-- **Framework**: **React**.
-- **Text Editor**: ??? with LSP, autocompletion, hover tooltips.
-- **Typst Compilation**: Client-side rendering using **WebAssembly** to render PDFs or SVGs in milliseconds without a server.
-- **Collaboration**: **Yjs** for conflict-free state resolution for server-backed sync.
+The backend is designed to be lightweight, high-performance, and secure, focusing on the following core domains:
 
-### Backend
-- **Networking**: High-performance WebSockets.
-- **CRDT Synchronization**: Go-based Yjs protocol server wrapper to store and merge update chunks.
-- **Database**: ??? Postgres or CoachDb
-- **Authentication**: JWT/OAuth2 cookie-based authentication.
+1. **CRDT Synchronization**: 
+   - Acts as the central synchronization authority using **Yjs** protocol adapters written in Go.
+   - Receives, validates, merges, and broadcasts conflict-free document update chunks.
+2. **Real-time Communication**:
+   - Manages persistent **WebSocket** connections for active collaborative sessions.
+   - Dispatches user presence, cursors, and system notifications in real-time.
+3. **Data Persistence**:
+   - Stores user profiles, workspace metadata, and compressed document state updates in ???Db.
+   - Provides point-in-time recovery and snapshot generation for documents.
+4. **Authentication & Authorization**:
+   - Handles secure JWT or secure cookie-based session management.
+   - Integrates OAuth2 providers and manages document-level access control lists.
 
 ---
 
+## 🛠 Tech Stack
+
+- **Language**: [Go (Golang)](https://go.dev/) (1.22+)
+- **Database**: ???
+- **Web Framework / Router**: Lightweight router Chi
+- **CRDT Support**: Yjs-compatible update storage and merging logic in Go
+
 ---
 
-## 🗺 Roadmap
-
+## 🗺 API & WebSocket Endpoints
 
 ---
 
 ## 📄 License
+
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
