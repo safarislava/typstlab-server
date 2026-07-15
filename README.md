@@ -38,7 +38,7 @@ The backend is designed to be lightweight, high-performance, and secure, focusin
 
 ---
 
-## 🗺 API & WebSocket Endpoints
+## 🗺 Roadmap
 
 ---
 
