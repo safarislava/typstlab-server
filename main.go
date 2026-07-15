@@ -11,7 +11,11 @@ import (
 
 func main() {
 	fmt.Println("Starting TypstLab Server...")
+	r := setupRouter()
+	_ = r
+}
 
+func setupRouter() *chi.Mux {
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
@@ -20,6 +24,8 @@ func main() {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("OK"))
 	})
+
+	return r
 }
 
 func Add(a, b int) int {
