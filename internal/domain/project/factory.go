@@ -7,7 +7,7 @@ import (
 )
 
 func NewProject(id uuid.UUID, name string, updatedAt time.Time) (*Project, error) {
-	if id.String() == "" {
+	if id == uuid.Nil {
 		return nil, ErrEmptyProjectID
 	}
 	if name == "" {

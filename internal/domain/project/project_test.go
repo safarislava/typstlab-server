@@ -40,6 +40,7 @@ func TestNewProject_Success(t *testing.T) {
 func TestNewProject_ValidationErrors(t *testing.T) {
 	t.Parallel()
 
+	const validName = "Valid Name"
 	tests := []struct {
 		name     string
 		id       uuid.UUID
@@ -47,6 +48,13 @@ func TestNewProject_ValidationErrors(t *testing.T) {
 		updated  time.Time
 		wantErr  error
 	}{
+		{
+			name:     "Empty ID",
+			id:       uuid.Nil,
+			projName: validName,
+			updated:  time.Now(),
+			wantErr:  ErrEmptyProjectID,
+		},
 		{
 			name:     "Empty Name",
 			id:       uuid.New(),
@@ -57,7 +65,7 @@ func TestNewProject_ValidationErrors(t *testing.T) {
 		{
 			name:     "Zero UpdatedAt",
 			id:       uuid.New(),
-			projName: "Valid Name",
+			projName: validName,
 			updated:  time.Time{},
 			wantErr:  ErrEmptyProjectUpdatedAt,
 		},
