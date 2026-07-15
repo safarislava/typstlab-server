@@ -20,15 +20,17 @@ jobs:
           go-version-file: 'go.mod'
           cache: true
 
+      - name: Install golangci-lint
+        run: go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.60.3
+
       - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v6
-        with:
-          version: v1.60
-          args: --timeout=5m
+        run: $(go env GOPATH)/bin/golangci-lint run --timeout=5m
 
   test:
     name: Test and Build
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
