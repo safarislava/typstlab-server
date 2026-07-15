@@ -1,0 +1,118 @@
+version: "2"
+
+run:
+  timeout: 5m
+  modules-download-mode: readonly
+
+formatters:
+  enable:
+    - gofumpt       # Stricter version of gofmt
+    - goimports     # Verifies imports are sorted and grouped
+  settings:
+    gofumpt:
+      extra-rules: true
+    goimports:
+      local-prefixes:
+        - github.com/safarislava/typstlab-server
+
+linters:
+  default: none
+  enable:
+    # Core/Default linters
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+
+    # Style/Text check
+    - misspell      # Finds spelling mistakes in comments and strings
+
+    # Strict Bug prevention
+    - bodyclose     # Checks whether HTTP response bodies are closed
+    - noctx         # Checks for sending HTTP requests without Context
+    - nilerr        # Checks if returning nil error when function returns an error
+    - errorlint     # Enforces wrapping with %w and using errors.Is/As
+    - makezero      # Finds sliced-based bugs (e.g. make with non-zero length and then append)
+    - sqlclosecheck # Checks that sql.Rows/sql.Stmt are closed
+    - rowserrcheck  # Checks sql.Rows.Err() is handled
+    - wastedassign  # Finds wasted assignments
+    - forcetypeassert # Forces ok-check on type assertions
+    - wrapcheck     # Enforces error wrapping for external errors
+
+    # Code smell / style checks
+    - revive        # Strict and customizable linter, modern replacement of golint
+    - gocritic      # Comprehensive code diagnostics for bugs, style, and performance
+    - unparam       # Finds unused function parameters
+    - unconvert     # Finds unnecessary type conversions
+    - nakedret      # Forbids naked returns in large functions
+    - usestdlibvars # Enforces standard library variables (like http.MethodGet instead of "GET")
+    - predeclared   # Detects shadowing of Go's built-in identifiers
+    - paralleltest  # Forces tests to use t.Parallel()
+
+    # Complexity & constraints checks
+    - goconst       # Enforces constants for repeated strings
+    - gocyclo       # Restricts cyclomatic complexity
+    - gocognit      # Restricts cognitive complexity
+    - prealloc      # Finds slices that can be preallocated to optimize memory
+    - nestif        # Limits deeply nested if statements
+    - funlen        # Restricts function length and statements count
+    - exhaustive    # Checks exhaustiveness of enum switch statements
+
+  settings:
+    govet:
+      enable-all: true
+      disable:
+        - fieldalignment # Disabled to prevent constant warnings about memory alignment packing
+    revive:
+      severity: warning
+      confidence: 0.8
+      rules:
+        - name: blank-imports
+        - name: context-as-argument
+        - name: context-keys-type
+        - name: dot-imports
+        - name: error-return
+        - name: error-strings
+        - name: error-naming
+        - name: exported
+        - name: if-return
+        - name: increment-decrement
+        - name: var-naming
+        - name: var-declaration
+        - name: package-comments
+        - name: range
+        - name: receiver-naming
+        - name: time-naming
+        - name: unexported-return
+        - name: indent-error-flow
+        - name: errorf
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - style
+        - performance
+        - opinionated
+        - experimental
+      disabled-checks:
+        - dupImport # sometimes necessary or handled by other linters
+    gocyclo:
+      min-complexity: 10
+    gocognit:
+      min-complexity: 10
+    goconst:
+      min-len: 3
+      min-occurrences: 2
+    nakedret:
+      max-func-lines: 10
+    nestif:
+      min-complexity: 3
+    funlen:
+      lines: 60
+      statements: 35
+    exhaustive:
+      default-signifies-exhaustive: true
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
