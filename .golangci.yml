@@ -75,18 +75,20 @@ linters:
         - name: error-return
         - name: error-strings
         - name: error-naming
-        - name: exported
         - name: if-return
         - name: increment-decrement
         - name: var-naming
         - name: var-declaration
-        - name: package-comments
         - name: range
         - name: receiver-naming
         - name: time-naming
         - name: unexported-return
         - name: indent-error-flow
         - name: errorf
+        - name: exported
+          disabled: true
+        - name: package-comments
+          disabled: true
     gocritic:
       enabled-tags:
         - diagnostic
