@@ -1,18 +1,27 @@
-// Package main is the entry point for the TypstLab Server application.
 package main
 
 import (
-	"fmt"
+	"log"
 	"net/http"
+	"os"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+
+	projectApp "github.com/safarislava/typstlab-server/internal/application/project"
+	projectHttp "github.com/safarislava/typstlab-server/internal/infrastructure/http"
+	projectDb "github.com/safarislava/typstlab-server/internal/infrastructure/persistence"
 )
 
 func main() {
-	fmt.Println("Starting TypstLab Server...")
 	r := setupRouter()
-	_ = r
+
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+
+	log.Fatal(http.ListenAndServe(":"+port, r))
 }
 
 func setupRouter() *chi.Mux {
@@ -20,14 +29,15 @@ func setupRouter() *chi.Mux {
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 
+	repo := projectDb.NewMemoryProjectRepository()
+	service := projectApp.NewService(repo)
+	handler := projectHttp.NewProjectHandler(service)
+
+	r.Post("/projects", handler.Create)
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("OK"))
 	})
 
 	return r
-}
-
-func Add(a, b int) int {
-	return a + b
 }
