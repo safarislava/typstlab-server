@@ -8,7 +8,16 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/go-chi/chi/v5"
+
+	"github.com/safarislava/typstlab-server/internal/infrastructure/config"
 )
+
+func setupTestRouter() *chi.Mux {
+	cfg := config.Load("../../configs/config.json")
+	return setupRouter(cfg)
+}
 
 func registerAndLogin(t *testing.T, router http.Handler, email, password string) string {
 	t.Helper()
@@ -39,7 +48,7 @@ func registerAndLogin(t *testing.T, router http.Handler, email, password string)
 
 func TestHealthEndpoint(t *testing.T) {
 	t.Parallel()
-	router := setupRouter()
+	router := setupTestRouter()
 
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "/health", http.NoBody)
 	if err != nil {
@@ -61,7 +70,7 @@ func TestHealthEndpoint(t *testing.T) {
 
 func TestCreateProject(t *testing.T) {
 	t.Parallel()
-	router := setupRouter()
+	router := setupTestRouter()
 
 	token := registerAndLogin(t, router, "test@example.com", "secretpassword")
 
@@ -102,7 +111,7 @@ func TestCreateProject(t *testing.T) {
 
 func TestCreateProject_InvalidJSON(t *testing.T) {
 	t.Parallel()
-	router := setupRouter()
+	router := setupTestRouter()
 
 	reqBody := `{invalid-json`
 	req, err := http.NewRequestWithContext(
@@ -128,7 +137,7 @@ func TestCreateProject_InvalidJSON(t *testing.T) {
 
 func TestCreateProject_ValidationError(t *testing.T) {
 	t.Parallel()
-	router := setupRouter()
+	router := setupTestRouter()
 
 	token := registerAndLogin(t, router, "test2@example.com", "secretpassword")
 

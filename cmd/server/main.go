@@ -19,12 +19,12 @@ import (
 )
 
 func main() {
-	cfg := config.Load()
-	r := setupRouter()
+	cfg := config.Load("configs/config.json")
+	r := setupRouter(cfg)
 	log.Fatal(http.ListenAndServe(":"+cfg.Port, r))
 }
 
-func setupRouter() *chi.Mux {
+func setupRouter(cfg *config.Config) *chi.Mux {
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
@@ -37,7 +37,6 @@ func setupRouter() *chi.Mux {
 	// Users / Auth components
 	userRepo := projectDb.NewMemoryUserRepository()
 	hasher := auth.NewBcryptHasher(0)
-	cfg := config.Load()
 	tokenService := auth.NewJWTTokenService(cfg.JWTSecret, 24*time.Hour)
 	userService := userApp.NewService(userRepo, hasher, tokenService)
 	userHandler := projectHttp.NewUserHandler(userService)
