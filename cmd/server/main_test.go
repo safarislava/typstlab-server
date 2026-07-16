@@ -4,14 +4,51 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/go-chi/chi/v5"
+
+	"github.com/safarislava/typstlab-server/internal/infrastructure/config"
 )
+
+func setupTestRouter() *chi.Mux {
+	cfg := config.Load("../../configs/config.json")
+	return setupRouter(cfg)
+}
+
+func registerAndLogin(t *testing.T, router http.Handler, email, password string) string {
+	t.Helper()
+
+	regBody := fmt.Sprintf(`{"email":%q,"password":%q}`, email, password)
+	regReq, _ := http.NewRequestWithContext(context.Background(), http.MethodPost, "/register", bytes.NewBufferString(regBody))
+	regRr := httptest.NewRecorder()
+	router.ServeHTTP(regRr, regReq)
+	if regRr.Code != http.StatusCreated {
+		t.Fatalf("Failed to register user: status %d, body %s", regRr.Code, regRr.Body.String())
+	}
+
+	loginBody := fmt.Sprintf(`{"email":%q,"password":%q}`, email, password)
+	loginReq, _ := http.NewRequestWithContext(context.Background(), http.MethodPost, "/login", bytes.NewBufferString(loginBody))
+	loginRr := httptest.NewRecorder()
+	router.ServeHTTP(loginRr, loginReq)
+	if loginRr.Code != http.StatusOK {
+		t.Fatalf("Failed to login user: status %d, body %s", loginRr.Code, loginRr.Body.String())
+	}
+
+	var loginResp map[string]string
+	if err := json.NewDecoder(loginRr.Body).Decode(&loginResp); err != nil {
+		t.Fatalf("Failed to decode login response: %v", err)
+	}
+
+	return loginResp["token"]
+}
 
 func TestHealthEndpoint(t *testing.T) {
 	t.Parallel()
-	router := setupRouter()
+	router := setupTestRouter()
 
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "/health", http.NoBody)
 	if err != nil {
@@ -33,7 +70,9 @@ func TestHealthEndpoint(t *testing.T) {
 
 func TestCreateProject(t *testing.T) {
 	t.Parallel()
-	router := setupRouter()
+	router := setupTestRouter()
+
+	token := registerAndLogin(t, router, "test@example.com", "secretpassword")
 
 	reqBody := `{"name":"My Test Project"}`
 	req, err := http.NewRequestWithContext(
@@ -45,12 +84,13 @@ func TestCreateProject(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create request: %v", err)
 	}
+	req.Header.Set("Authorization", "Bearer "+token)
 
 	rr := httptest.NewRecorder()
 	router.ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusCreated {
-		t.Errorf("Expected status code %d, got %d", http.StatusCreated, rr.Code)
+		t.Errorf("Expected status code %d, got %d, body %s", http.StatusCreated, rr.Code, rr.Body.String())
 	}
 
 	var resp map[string]string
@@ -71,7 +111,7 @@ func TestCreateProject(t *testing.T) {
 
 func TestCreateProject_InvalidJSON(t *testing.T) {
 	t.Parallel()
-	router := setupRouter()
+	router := setupTestRouter()
 
 	reqBody := `{invalid-json`
 	req, err := http.NewRequestWithContext(
@@ -84,6 +124,9 @@ func TestCreateProject_InvalidJSON(t *testing.T) {
 		t.Fatalf("Failed to create request: %v", err)
 	}
 
+	token := registerAndLogin(t, router, "test_invalid_json@example.com", "password")
+	req.Header.Set("Authorization", "Bearer "+token)
+
 	rr := httptest.NewRecorder()
 	router.ServeHTTP(rr, req)
 
@@ -94,7 +137,9 @@ func TestCreateProject_InvalidJSON(t *testing.T) {
 
 func TestCreateProject_ValidationError(t *testing.T) {
 	t.Parallel()
-	router := setupRouter()
+	router := setupTestRouter()
+
+	token := registerAndLogin(t, router, "test2@example.com", "secretpassword")
 
 	reqBody := `{"name":""}`
 	req, err := http.NewRequestWithContext(
@@ -106,6 +151,7 @@ func TestCreateProject_ValidationError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create request: %v", err)
 	}
+	req.Header.Set("Authorization", "Bearer "+token)
 
 	rr := httptest.NewRecorder()
 	router.ServeHTTP(rr, req)

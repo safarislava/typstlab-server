@@ -1,0 +1,4 @@
+{
+  "port": "8080",
+  "jwt_secret": "my-super-secret-key-that-is-very-long-and-secure"
+}

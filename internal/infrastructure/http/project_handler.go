@@ -18,18 +18,18 @@ func NewProjectHandler(service *application.Service) *ProjectHandler {
 	}
 }
 
-type jsonCreateProjectRequest struct {
+type jsonCreateRequest struct {
 	Name string `json:"name"`
 }
 
-type JSONCreateProjectResponse struct {
+type JSONCreateResponse struct {
 	ID        string `json:"id"`
 	Name      string `json:"name"`
 	UpdatedAt string `json:"updated_at"`
 }
 
-func NewJSONCreateProjectResponse(response *application.CreateProjectResponse) JSONCreateProjectResponse {
-	return JSONCreateProjectResponse{
+func newJSONCreateResponse(response *application.CreateResponse) JSONCreateResponse {
+	return JSONCreateResponse{
 		ID:        response.ID.String(),
 		Name:      response.Name,
 		UpdatedAt: response.UpdatedAt.Format(time.RFC3339),
@@ -37,25 +37,33 @@ func NewJSONCreateProjectResponse(response *application.CreateProjectResponse) J
 }
 
 func (h *ProjectHandler) Create(w http.ResponseWriter, r *http.Request) {
-	var jsonRequest jsonCreateProjectRequest
-	if err := json.NewDecoder(r.Body).Decode(&jsonRequest); err != nil {
+	var jsonReq jsonCreateRequest
+	if err := json.NewDecoder(r.Body).Decode(&jsonReq); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
-	request := application.CreateProjectRequest{
-		Name: jsonRequest.Name,
+	userID, ok := UserIDFromContext(r.Context())
+	if !ok {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte("Unauthorized"))
+		return
 	}
 
-	response, err := h.service.CreateProject(r.Context(), request)
+	req := application.CreateRequest{
+		UserID: userID,
+		Name:   jsonReq.Name,
+	}
+
+	resp, err := h.service.Create(r.Context(), req)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		_, _ = w.Write([]byte(err.Error()))
 		return
 	}
 
-	jsonResponse := NewJSONCreateProjectResponse(response)
+	jsonResp := newJSONCreateResponse(resp)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	_ = json.NewEncoder(w).Encode(jsonResponse)
+	_ = json.NewEncoder(w).Encode(jsonResp)
 }
