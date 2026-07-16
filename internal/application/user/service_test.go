@@ -13,7 +13,8 @@ import (
 )
 
 const (
-	testPassword = "password"
+	testPassword   = "password"
+	testLoginEmail = "login@example.com"
 )
 
 type mockRepository struct {
@@ -149,7 +150,7 @@ func TestService_Login_Success(t *testing.T) {
 	t.Parallel()
 
 	userID := uuid.New()
-	u, _ := domain.NewUser(userID, "login@example.com", "hashed_secret", domain.RoleUser)
+	u, _ := domain.NewUser(userID, testLoginEmail, "hashed_secret", domain.RoleUser)
 	repo := &mockRepository{
 		findByEmailFunc: func(ctx context.Context, email string) (*domain.User, error) {
 			return u, nil
@@ -161,7 +162,7 @@ func TestService_Login_Success(t *testing.T) {
 	svc := NewService(repo, hasher, tokenSvc)
 
 	req := LoginRequest{
-		Email:    "login@example.com",
+		Email:    testLoginEmail,
 		Password: "secret",
 	}
 
@@ -173,5 +174,87 @@ func TestService_Login_Success(t *testing.T) {
 	expectedToken := "token_" + userID.String()
 	if resp.Token.Value() != expectedToken {
 		t.Errorf("Expected token %q, got %q", expectedToken, resp.Token.Value())
+	}
+}
+
+func TestService_Login_UserNotFound(t *testing.T) {
+	t.Parallel()
+
+	repo := &mockRepository{
+		findByEmailFunc: func(ctx context.Context, email string) (*domain.User, error) {
+			return nil, errors.New("not found")
+		},
+	}
+	hasher := &mockHasher{}
+	tokenSvc := &mockTokenService{}
+
+	svc := NewService(repo, hasher, tokenSvc)
+
+	req := LoginRequest{
+		Email:    "nonexistent@example.com",
+		Password: testPassword,
+	}
+
+	_, err := svc.Login(context.Background(), req)
+	if err == nil {
+		t.Fatal("Expected error user not found, got nil")
+	}
+}
+
+func TestService_Login_PasswordMismatch(t *testing.T) {
+	t.Parallel()
+
+	u, _ := domain.NewUser(uuid.New(), testLoginEmail, "hashed_secret", domain.RoleUser)
+	repo := &mockRepository{
+		findByEmailFunc: func(ctx context.Context, email string) (*domain.User, error) {
+			return u, nil
+		},
+	}
+	hasher := &mockHasher{
+		compareFunc: func(hashedPassword, password string) error {
+			return errors.New("mismatch")
+		},
+	}
+	tokenSvc := &mockTokenService{}
+
+	svc := NewService(repo, hasher, tokenSvc)
+
+	req := LoginRequest{
+		Email:    testLoginEmail,
+		Password: "wrongpassword",
+	}
+
+	_, err := svc.Login(context.Background(), req)
+	if err == nil {
+		t.Fatal("Expected error password mismatch, got nil")
+	}
+}
+
+func TestService_Login_TokenGenerationFailure(t *testing.T) {
+	t.Parallel()
+
+	u, _ := domain.NewUser(uuid.New(), testLoginEmail, "hashed_secret", domain.RoleUser)
+	repo := &mockRepository{
+		findByEmailFunc: func(ctx context.Context, email string) (*domain.User, error) {
+			return u, nil
+		},
+	}
+	hasher := &mockHasher{}
+	tokenSvc := &mockTokenService{
+		generateFunc: func(userID uuid.UUID, role domain.Role) (token.Token, error) {
+			return token.Token{}, errors.New("failed to generate")
+		},
+	}
+
+	svc := NewService(repo, hasher, tokenSvc)
+
+	req := LoginRequest{
+		Email:    testLoginEmail,
+		Password: testPassword,
+	}
+
+	_, err := svc.Login(context.Background(), req)
+	if err == nil {
+		t.Fatal("Expected error token generation failure, got nil")
 	}
 }
