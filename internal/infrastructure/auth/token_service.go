@@ -1,59 +1,74 @@
 package auth
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"errors"
 	"fmt"
-	"sync"
+	"time"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 
 	"github.com/safarislava/typstlab-server/internal/domain/user"
 )
 
-type session struct {
-	userID uuid.UUID
-	role   user.Role
+type JWTTokenService struct {
+	secretKey     []byte
+	tokenDuration time.Duration
 }
 
-type MemoryTokenService struct {
-	mu       sync.RWMutex
-	sessions map[string]session
+type claims struct {
+	Role string `json:"role"`
+	jwt.RegisteredClaims
 }
 
-func NewMemoryTokenService() *MemoryTokenService {
-	return &MemoryTokenService{
-		sessions: make(map[string]session),
+func NewJWTTokenService(secretKey string, duration time.Duration) *JWTTokenService {
+	return &JWTTokenService{
+		secretKey:     []byte(secretKey),
+		tokenDuration: duration,
 	}
 }
 
-func (s *MemoryTokenService) Generate(userID uuid.UUID, role user.Role) (string, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+func (s *JWTTokenService) Generate(userID uuid.UUID, role user.Role) (string, error) {
+	expirationTime := time.Now().Add(s.tokenDuration)
 
-	bytes := make([]byte, 16)
-	if _, err := rand.Read(bytes); err != nil {
-		return "", fmt.Errorf("failed to generate random bytes: %w", err)
-	}
-	token := hex.EncodeToString(bytes)
-
-	s.sessions[token] = session{
-		userID: userID,
-		role:   role,
+	c := claims{
+		Role: string(role),
+		RegisteredClaims: jwt.RegisteredClaims{
+			Subject:   userID.String(),
+			ExpiresAt: jwt.NewNumericDate(expirationTime),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+		},
 	}
 
-	return token, nil
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, c)
+	tokenStr, err := token.SignedString(s.secretKey)
+	if err != nil {
+		return "", fmt.Errorf("failed to sign token: %w", err)
+	}
+
+	return tokenStr, nil
 }
 
-func (s *MemoryTokenService) Validate(token string) (uuid.UUID, user.Role, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	sess, ok := s.sessions[token]
-	if !ok {
-		return uuid.Nil, user.RoleGhost, errors.New("invalid or expired token")
+func (s *JWTTokenService) Validate(tokenStr string) (uuid.UUID, user.Role, error) {
+	token, err := jwt.ParseWithClaims(tokenStr, &claims{}, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+		}
+		return s.secretKey, nil
+	})
+	if err != nil {
+		return uuid.Nil, user.RoleGhost, fmt.Errorf("token validation failed: %w", err)
 	}
 
-	return sess.userID, sess.role, nil
+	c, ok := token.Claims.(*claims)
+	if !ok || !token.Valid {
+		return uuid.Nil, user.RoleGhost, errors.New("invalid token claims")
+	}
+
+	userID, err := uuid.Parse(c.Subject)
+	if err != nil {
+		return uuid.Nil, user.RoleGhost, fmt.Errorf("invalid user ID in token: %w", err)
+	}
+
+	return userID, user.Role(c.Role), nil
 }

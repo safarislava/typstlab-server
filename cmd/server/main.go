@@ -3,28 +3,25 @@ package main
 import (
 	"log"
 	"net/http"
-	"os"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+
 	"github.com/safarislava/typstlab-server/internal/domain/user"
 
 	projectApp "github.com/safarislava/typstlab-server/internal/application/project"
 	userApp "github.com/safarislava/typstlab-server/internal/application/user"
 	"github.com/safarislava/typstlab-server/internal/infrastructure/auth"
+	"github.com/safarislava/typstlab-server/internal/infrastructure/config"
 	projectHttp "github.com/safarislava/typstlab-server/internal/infrastructure/http"
 	projectDb "github.com/safarislava/typstlab-server/internal/infrastructure/persistence"
 )
 
 func main() {
+	cfg := config.Load()
 	r := setupRouter()
-
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8080"
-	}
-
-	log.Fatal(http.ListenAndServe(":"+port, r))
+	log.Fatal(http.ListenAndServe(":"+cfg.Port, r))
 }
 
 func setupRouter() *chi.Mux {
@@ -40,7 +37,8 @@ func setupRouter() *chi.Mux {
 	// Users / Auth components
 	userRepo := projectDb.NewMemoryUserRepository()
 	hasher := auth.NewBcryptHasher(0)
-	tokenService := auth.NewMemoryTokenService()
+	cfg := config.Load()
+	tokenService := auth.NewJWTTokenService(cfg.JWTSecret, 24*time.Hour)
 	userService := userApp.NewService(userRepo, hasher, tokenService)
 	userHandler := projectHttp.NewUserHandler(userService)
 	authMiddleware := projectHttp.NewAuthMiddleware(tokenService)
