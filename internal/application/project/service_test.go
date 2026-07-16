@@ -51,7 +51,8 @@ func TestService_Create_Success(t *testing.T) {
 
 	const testProjectName = "Test Project"
 	req := CreateRequest{
-		Name: testProjectName,
+		UserID: uuid.New(),
+		Name:   testProjectName,
 	}
 
 	resp, err := svc.Create(context.Background(), req)
@@ -83,7 +84,8 @@ func TestService_Create_ValidationError(t *testing.T) {
 	svc := NewService(repo)
 
 	req := CreateRequest{
-		Name: "", // invalid name
+		UserID: uuid.New(),
+		Name:   "", // invalid name
 	}
 
 	_, err := svc.Create(context.Background(), req)
@@ -108,7 +110,8 @@ func TestService_Create_SaveError(t *testing.T) {
 	svc := NewService(repo)
 
 	req := CreateRequest{
-		Name: "Failing Save Project",
+		UserID: uuid.New(),
+		Name:   "Failing Save Project",
 	}
 
 	_, err := svc.Create(context.Background(), req)
