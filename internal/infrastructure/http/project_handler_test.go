@@ -53,7 +53,8 @@ func TestProjectHandler_Create_Success(t *testing.T) {
 
 	const testProjectName = "HTTP Test Project"
 	reqBody, _ := json.Marshal(jsonCreateRequest{Name: testProjectName})
-	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/projects", bytes.NewBuffer(reqBody))
+	ctx := context.WithValue(context.Background(), userIDKey, uuid.New())
+	req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/projects", bytes.NewBuffer(reqBody))
 	rr := httptest.NewRecorder()
 
 	handler.Create(rr, req)
@@ -106,7 +107,8 @@ func TestProjectHandler_Create_ServiceError(t *testing.T) {
 	handler := NewProjectHandler(svc)
 
 	reqBody, _ := json.Marshal(jsonCreateRequest{Name: ""})
-	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/projects", bytes.NewBuffer(reqBody))
+	ctx := context.WithValue(context.Background(), userIDKey, uuid.New())
+	req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/projects", bytes.NewBuffer(reqBody))
 	rr := httptest.NewRecorder()
 
 	handler.Create(rr, req)

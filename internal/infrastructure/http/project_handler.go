@@ -43,8 +43,16 @@ func (h *ProjectHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	userID, ok := UserIDFromContext(r.Context())
+	if !ok {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte("Unauthorized"))
+		return
+	}
+
 	req := application.CreateRequest{
-		Name: jsonReq.Name,
+		UserID: userID,
+		Name:   jsonReq.Name,
 	}
 
 	resp, err := h.service.Create(r.Context(), req)
