@@ -43,18 +43,18 @@ func TestNewService(t *testing.T) {
 	}
 }
 
-func TestService_CreateProject_Success(t *testing.T) {
+func TestService_Create_Success(t *testing.T) {
 	t.Parallel()
 
 	repo := &mockRepository{}
 	svc := NewService(repo)
 
 	const testProjectName = "Test Project"
-	req := CreateProjectRequest{
+	req := CreateRequest{
 		Name: testProjectName,
 	}
 
-	resp, err := svc.CreateProject(context.Background(), req)
+	resp, err := svc.Create(context.Background(), req)
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
@@ -76,17 +76,17 @@ func TestService_CreateProject_Success(t *testing.T) {
 	}
 }
 
-func TestService_CreateProject_ValidationError(t *testing.T) {
+func TestService_Create_ValidationError(t *testing.T) {
 	t.Parallel()
 
 	repo := &mockRepository{}
 	svc := NewService(repo)
 
-	req := CreateProjectRequest{
+	req := CreateRequest{
 		Name: "", // invalid name
 	}
 
-	_, err := svc.CreateProject(context.Background(), req)
+	_, err := svc.Create(context.Background(), req)
 	if err == nil {
 		t.Fatal("Expected validation error, got nil")
 	}
@@ -96,7 +96,7 @@ func TestService_CreateProject_ValidationError(t *testing.T) {
 	}
 }
 
-func TestService_CreateProject_SaveError(t *testing.T) {
+func TestService_Create_SaveError(t *testing.T) {
 	t.Parallel()
 
 	expectedErr := errors.New("database connection down")
@@ -107,11 +107,11 @@ func TestService_CreateProject_SaveError(t *testing.T) {
 	}
 	svc := NewService(repo)
 
-	req := CreateProjectRequest{
+	req := CreateRequest{
 		Name: "Failing Save Project",
 	}
 
-	_, err := svc.CreateProject(context.Background(), req)
+	_, err := svc.Create(context.Background(), req)
 	if err == nil {
 		t.Fatal("Expected repository save error, got nil")
 	}

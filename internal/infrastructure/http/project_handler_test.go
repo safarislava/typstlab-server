@@ -52,7 +52,7 @@ func TestProjectHandler_Create_Success(t *testing.T) {
 	handler := NewProjectHandler(svc)
 
 	const testProjectName = "HTTP Test Project"
-	reqBody, _ := json.Marshal(jsonCreateProjectRequest{Name: testProjectName})
+	reqBody, _ := json.Marshal(jsonCreateRequest{Name: testProjectName})
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/projects", bytes.NewBuffer(reqBody))
 	rr := httptest.NewRecorder()
 
@@ -62,7 +62,7 @@ func TestProjectHandler_Create_Success(t *testing.T) {
 		t.Errorf("Expected status code %d, got %d", http.StatusCreated, rr.Code)
 	}
 
-	var resp JSONCreateProjectResponse
+	var resp JSONCreateResponse
 	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
 		t.Fatalf("Failed to decode response: %v", err)
 	}
@@ -105,7 +105,7 @@ func TestProjectHandler_Create_ServiceError(t *testing.T) {
 	svc := application.NewService(repo)
 	handler := NewProjectHandler(svc)
 
-	reqBody, _ := json.Marshal(jsonCreateProjectRequest{Name: ""})
+	reqBody, _ := json.Marshal(jsonCreateRequest{Name: ""})
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/projects", bytes.NewBuffer(reqBody))
 	rr := httptest.NewRecorder()
 

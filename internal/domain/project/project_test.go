@@ -53,21 +53,21 @@ func TestNewProject_ValidationErrors(t *testing.T) {
 			id:       uuid.Nil,
 			projName: validName,
 			updated:  time.Now(),
-			wantErr:  ErrEmptyProjectID,
+			wantErr:  ErrEmptyID,
 		},
 		{
 			name:     "Empty Name",
 			id:       uuid.New(),
 			projName: "",
 			updated:  time.Now(),
-			wantErr:  ErrEmptyProjectName,
+			wantErr:  ErrEmptyName,
 		},
 		{
 			name:     "Zero UpdatedAt",
 			id:       uuid.New(),
 			projName: validName,
 			updated:  time.Time{},
-			wantErr:  ErrEmptyProjectUpdatedAt,
+			wantErr:  ErrEmptyUpdatedAt,
 		},
 	}
 

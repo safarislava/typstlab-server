@@ -10,11 +10,11 @@ import (
 	domain "github.com/safarislava/typstlab-server/internal/domain/project"
 )
 
-type CreateProjectRequest struct {
+type CreateRequest struct {
 	Name string
 }
 
-type CreateProjectResponse struct {
+type CreateResponse struct {
 	ID        uuid.UUID
 	Name      string
 	UpdatedAt time.Time
@@ -30,8 +30,8 @@ func NewService(repo Repository) *Service {
 	}
 }
 
-func (s *Service) CreateProject(ctx context.Context, request CreateProjectRequest) (*CreateProjectResponse, error) {
-	p, err := domain.NewProject(uuid.New(), request.Name, time.Now())
+func (s *Service) Create(ctx context.Context, req CreateRequest) (*CreateResponse, error) {
+	p, err := domain.NewProject(uuid.New(), req.Name, time.Now())
 	if err != nil {
 		return nil, fmt.Errorf("failed to create domain project: %w", err)
 	}
@@ -40,7 +40,7 @@ func (s *Service) CreateProject(ctx context.Context, request CreateProjectReques
 		return nil, fmt.Errorf("failed to save project: %w", err)
 	}
 
-	return &CreateProjectResponse{
+	return &CreateResponse{
 		ID:        p.ID(),
 		Name:      p.Name(),
 		UpdatedAt: p.UpdatedAt(),

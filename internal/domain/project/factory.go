@@ -8,13 +8,13 @@ import (
 
 func NewProject(id uuid.UUID, name string, updatedAt time.Time) (*Project, error) {
 	if id == uuid.Nil {
-		return nil, ErrEmptyProjectID
+		return nil, ErrEmptyID
 	}
 	if name == "" {
-		return nil, ErrEmptyProjectName
+		return nil, ErrEmptyName
 	}
 	if updatedAt.IsZero() {
-		return nil, ErrEmptyProjectUpdatedAt
+		return nil, ErrEmptyUpdatedAt
 	}
 
 	return &Project{
