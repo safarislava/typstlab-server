@@ -89,7 +89,7 @@ func (h *UserHandler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	jsonResp := JSONLoginResponse{
-		Token: resp.Token,
+		Token: resp.Token.Value(),
 	}
 
 	w.Header().Set("Content-Type", "application/json")

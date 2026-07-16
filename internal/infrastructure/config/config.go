@@ -13,7 +13,10 @@ type Config struct {
 func Load() *Config {
 	file, err := os.Open("configs/config.json")
 	if err != nil {
-		panic("config file configs/config.json is missing: " + err.Error())
+		file, err = os.Open("../../configs/config.json")
+		if err != nil {
+			panic("config file configs/config.json is missing: " + err.Error())
+		}
 	}
 	defer func() { _ = file.Close() }()
 

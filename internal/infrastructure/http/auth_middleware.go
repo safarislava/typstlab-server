@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/safarislava/typstlab-server/internal/application/user"
+	domainToken "github.com/safarislava/typstlab-server/internal/domain/token"
 	domainUser "github.com/safarislava/typstlab-server/internal/domain/user"
 )
 
@@ -42,8 +43,14 @@ func (m *AuthMiddleware) Authenticate(next http.Handler) http.Handler {
 			return
 		}
 
-		token := parts[1]
-		userID, role, err := m.tokenService.Validate(token)
+		tokenStr := parts[1]
+		tok, err := domainToken.NewToken(tokenStr)
+		if err != nil {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		userID, role, err := m.tokenService.Validate(tok)
 		if err != nil {
 			next.ServeHTTP(w, r)
 			return

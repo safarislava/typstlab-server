@@ -3,10 +3,12 @@ package user
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/google/uuid"
 
+	"github.com/safarislava/typstlab-server/internal/domain/token"
 	domain "github.com/safarislava/typstlab-server/internal/domain/user"
 )
 
@@ -64,22 +66,26 @@ func (m *mockHasher) Compare(hashedPassword, password string) error {
 }
 
 type mockTokenService struct {
-	generateFunc func(userID uuid.UUID, role domain.Role) (string, error)
-	validateFunc func(token string) (uuid.UUID, domain.Role, error)
+	generateFunc func(userID uuid.UUID, role domain.Role) (token.Token, error)
+	validateFunc func(t token.Token) (uuid.UUID, domain.Role, error)
 }
 
-func (m *mockTokenService) Generate(userID uuid.UUID, role domain.Role) (string, error) {
+func (m *mockTokenService) Generate(userID uuid.UUID, role domain.Role) (token.Token, error) {
 	if m.generateFunc != nil {
 		return m.generateFunc(userID, role)
 	}
-	return "token_" + userID.String(), nil
+	t, err := token.NewToken("token_" + userID.String())
+	if err != nil {
+		return token.Token{}, fmt.Errorf("failed to create mock token: %w", err)
+	}
+	return t, nil
 }
 
-func (m *mockTokenService) Validate(token string) (uuid.UUID, domain.Role, error) {
+func (m *mockTokenService) Validate(t token.Token) (uuid.UUID, domain.Role, error) {
 	if m.validateFunc != nil {
-		return m.validateFunc(token)
+		return m.validateFunc(t)
 	}
-	return uuid.Nil, "", errors.New("invalid")
+	return uuid.Nil, domain.RoleGhost, errors.New("invalid")
 }
 
 func TestService_Register_Success(t *testing.T) {
@@ -165,7 +171,7 @@ func TestService_Login_Success(t *testing.T) {
 	}
 
 	expectedToken := "token_" + userID.String()
-	if resp.Token != expectedToken {
-		t.Errorf("Expected token %q, got %q", expectedToken, resp.Token)
+	if resp.Token.Value() != expectedToken {
+		t.Errorf("Expected token %q, got %q", expectedToken, resp.Token.Value())
 	}
 }

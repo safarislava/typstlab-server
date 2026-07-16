@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/safarislava/typstlab-server/internal/domain/token"
 	domain "github.com/safarislava/typstlab-server/internal/domain/user"
 )
 
@@ -28,7 +29,7 @@ type LoginRequest struct {
 }
 
 type LoginResponse struct {
-	Token string
+	Token token.Token
 }
 
 type Service struct {
@@ -88,12 +89,12 @@ func (s *Service) Login(ctx context.Context, req LoginRequest) (*LoginResponse, 
 		return nil, errors.New("invalid email or password")
 	}
 
-	token, err := s.tokenService.Generate(u.ID(), u.Role())
+	t, err := s.tokenService.Generate(u.ID(), u.Role())
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate token: %w", err)
 	}
 
 	return &LoginResponse{
-		Token: token,
+		Token: t,
 	}, nil
 }

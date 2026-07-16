@@ -26,7 +26,7 @@ func TestJWTTokenService_Success(t *testing.T) {
 		t.Fatalf("Unexpected error generating token: %v", err)
 	}
 
-	if token == "" {
+	if token.Value() == "" {
 		t.Fatal("Expected non-empty token")
 	}
 
