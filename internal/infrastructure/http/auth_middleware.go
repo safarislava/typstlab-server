@@ -20,10 +20,10 @@ const (
 )
 
 type AuthMiddleware struct {
-	authService *auth.Service
+	authService auth.UseCase
 }
 
-func NewAuthMiddleware(authService *auth.Service) *AuthMiddleware {
+func NewAuthMiddleware(authService auth.UseCase) *AuthMiddleware {
 	return &AuthMiddleware{
 		authService: authService,
 	}

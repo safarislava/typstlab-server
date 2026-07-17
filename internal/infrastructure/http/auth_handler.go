@@ -11,10 +11,10 @@ import (
 const refreshTokenCookieName = "refresh_token"
 
 type AuthHandler struct {
-	authService *auth.Service
+	authService auth.UseCase
 }
 
-func NewAuthHandler(authService *auth.Service) *AuthHandler {
+func NewAuthHandler(authService auth.UseCase) *AuthHandler {
 	return &AuthHandler{
 		authService: authService,
 	}

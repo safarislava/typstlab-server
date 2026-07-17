@@ -13,11 +13,17 @@ import (
 	domainToken "github.com/safarislava/typstlab-server/internal/domain/token"
 )
 
+type UseCase interface {
+	Create(ctx context.Context, userID uuid.UUID, duration time.Duration) (domain.Session, error)
+	Get(ctx context.Context, token domainToken.Token) (domain.Session, error)
+	Invalidate(ctx context.Context, token domainToken.Token) error
+}
+
 type Service struct {
 	repo Repository
 }
 
-func NewService(repo Repository) *Service {
+func NewService(repo Repository) UseCase {
 	return &Service{repo: repo}
 }
 

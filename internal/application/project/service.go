@@ -21,11 +21,15 @@ type CreateResponse struct {
 	UpdatedAt time.Time
 }
 
+type UseCase interface {
+	Create(ctx context.Context, req CreateRequest) (*CreateResponse, error)
+}
+
 type Service struct {
 	repo Repository
 }
 
-func NewService(repo Repository) *Service {
+func NewService(repo Repository) UseCase {
 	return &Service{
 		repo: repo,
 	}
