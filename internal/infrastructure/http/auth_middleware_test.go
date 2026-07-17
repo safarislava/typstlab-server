@@ -9,6 +9,9 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/safarislava/typstlab-server/internal/application/auth"
+	sessionApp "github.com/safarislava/typstlab-server/internal/application/session"
+	"github.com/safarislava/typstlab-server/internal/application/user"
 	"github.com/safarislava/typstlab-server/internal/domain/token"
 	domainUser "github.com/safarislava/typstlab-server/internal/domain/user"
 )
@@ -28,7 +31,82 @@ func (m *mockTokenService) Validate(t token.Token) (uuid.UUID, domainUser.Role, 
 	return uuid.Nil, "", errors.New("invalid")
 }
 
-func TestAuthMiddleware_Authenticate(t *testing.T) {
+func setupTestMiddleware(tokenSvc *mockTokenService) *AuthMiddleware {
+	userRepo := &mockUserRepo{}
+	hasher := &mockUserHasher{}
+	rtRepo := &mockUserSessionRepo{}
+
+	userSvc := user.NewService(userRepo, hasher)
+	rtSvc := sessionApp.NewService(rtRepo)
+	authSvc := auth.NewService(userSvc, rtSvc, tokenSvc, hasher)
+
+	return NewAuthMiddleware(authSvc)
+}
+
+func TestAuthMiddleware_Authenticate_NoAuthHeader(t *testing.T) {
+	t.Parallel()
+
+	tokenSvc := &mockTokenService{}
+	mw := setupTestMiddleware(tokenSvc)
+
+	var ctxUserID uuid.UUID
+	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctxUserID, _ = r.Context().Value(userIDKey).(uuid.UUID)
+		w.WriteHeader(http.StatusOK)
+	})
+
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/", http.NoBody)
+	mw.Authenticate(nextHandler).ServeHTTP(httptest.NewRecorder(), req)
+	if ctxUserID != uuid.Nil {
+		t.Error("Expected userID context to be nil when no auth header is present")
+	}
+}
+
+func TestAuthMiddleware_Authenticate_InvalidHeader(t *testing.T) {
+	t.Parallel()
+
+	tokenSvc := &mockTokenService{}
+	mw := setupTestMiddleware(tokenSvc)
+
+	var ctxUserID uuid.UUID
+	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctxUserID, _ = r.Context().Value(userIDKey).(uuid.UUID)
+		w.WriteHeader(http.StatusOK)
+	})
+
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/", http.NoBody)
+	req.Header.Set("Authorization", "invalid")
+	mw.Authenticate(nextHandler).ServeHTTP(httptest.NewRecorder(), req)
+	if ctxUserID != uuid.Nil {
+		t.Error("Expected userID context to be nil when auth header is invalid")
+	}
+}
+
+func TestAuthMiddleware_Authenticate_InvalidToken(t *testing.T) {
+	t.Parallel()
+
+	tokenSvc := &mockTokenService{
+		validateFunc: func(t token.Token) (uuid.UUID, domainUser.Role, error) {
+			return uuid.Nil, "", errors.New("invalid token")
+		},
+	}
+	mw := setupTestMiddleware(tokenSvc)
+
+	var ctxUserID uuid.UUID
+	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctxUserID, _ = r.Context().Value(userIDKey).(uuid.UUID)
+		w.WriteHeader(http.StatusOK)
+	})
+
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/", http.NoBody)
+	req.Header.Set("Authorization", "Bearer invalid-token")
+	mw.Authenticate(nextHandler).ServeHTTP(httptest.NewRecorder(), req)
+	if ctxUserID != uuid.Nil {
+		t.Error("Expected userID context to be nil when token is invalid")
+	}
+}
+
+func TestAuthMiddleware_Authenticate_ValidToken(t *testing.T) {
 	t.Parallel()
 
 	userID := uuid.New()
@@ -42,8 +120,7 @@ func TestAuthMiddleware_Authenticate(t *testing.T) {
 			return uuid.Nil, "", errors.New("invalid token")
 		},
 	}
-
-	mw := NewAuthMiddleware(tokenSvc)
+	mw := setupTestMiddleware(tokenSvc)
 
 	var ctxUserID uuid.UUID
 	var ctxRole domainUser.Role
@@ -53,34 +130,9 @@ func TestAuthMiddleware_Authenticate(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	// Case 1: No auth header
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/", http.NoBody)
-	rr := httptest.NewRecorder()
-	mw.Authenticate(nextHandler).ServeHTTP(rr, req)
-	if ctxUserID != uuid.Nil {
-		t.Error("Expected userID context to be nil when no auth header is present")
-	}
-
-	// Case 2: Invalid header parts
-	req = httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/", http.NoBody)
-	req.Header.Set("Authorization", "invalid")
-	mw.Authenticate(nextHandler).ServeHTTP(rr, req)
-	if ctxUserID != uuid.Nil {
-		t.Error("Expected userID context to be nil when auth header is invalid")
-	}
-
-	// Case 3: Invalid token
-	req = httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/", http.NoBody)
-	req.Header.Set("Authorization", "Bearer invalid-token")
-	mw.Authenticate(nextHandler).ServeHTTP(rr, req)
-	if ctxUserID != uuid.Nil {
-		t.Error("Expected userID context to be nil when token is invalid")
-	}
-
-	// Case 4: Valid token
-	req = httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/", http.NoBody)
 	req.Header.Set("Authorization", "Bearer valid-token")
-	mw.Authenticate(nextHandler).ServeHTTP(rr, req)
+	mw.Authenticate(nextHandler).ServeHTTP(httptest.NewRecorder(), req)
 	if ctxUserID != userID {
 		t.Errorf("Expected userID context %s, got %s", userID, ctxUserID)
 	}
