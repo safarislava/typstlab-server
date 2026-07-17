@@ -22,12 +22,18 @@ type RegisterResponse struct {
 	Role  domain.Role
 }
 
+type UseCase interface {
+	Register(ctx context.Context, req RegisterRequest) (*RegisterResponse, error)
+	GetByEmail(ctx context.Context, email string) (*domain.User, error)
+	GetByID(ctx context.Context, id uuid.UUID) (*domain.User, error)
+}
+
 type Service struct {
 	repo   Repository
 	hasher PasswordHasher
 }
 
-func NewService(repo Repository, hasher PasswordHasher) *Service {
+func NewService(repo Repository, hasher PasswordHasher) UseCase {
 	return &Service{
 		repo:   repo,
 		hasher: hasher,

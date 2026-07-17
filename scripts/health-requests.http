@@ -1,0 +1,52 @@
+### Configuration Variables
+@host = https://typstlab-server.onrender.com/
+
+### 1. Health Check
+GET {{host}}/health
+
+### 2. Register a New User
+POST {{host}}/register
+Content-Type: application/json
+
+{
+  "email": "user@example.com",
+  "password": "securepassword",
+  "role": "user"
+}
+
+### 3. Login User (Obtain tokens and sets Cookie)
+# @name login
+POST {{host}}/login
+Content-Type: application/json
+
+{
+  "email": "user@example.com",
+  "password": "securepassword"
+}
+
+> {%
+    if (response.status === 200) {
+        client.global.set("auth_token", response.body.token);
+    }
+%}
+
+### 4. Create Project (Protected - requires Bearer Token)
+POST {{host}}/projects
+Authorization: Bearer {{auth_token}}
+Content-Type: application/json
+
+{
+  "name": "My New Project"
+}
+
+### 5. Refresh Access Token (Uses HTTP-Only refresh_token cookie)
+POST {{host}}/refresh
+
+> {%
+    if (response.status === 200) {
+        client.global.set("auth_token", response.body.token);
+    }
+%}
+
+### 6. Logout User (Clears refresh cookie and invalidates session)
+POST {{host}}/logout

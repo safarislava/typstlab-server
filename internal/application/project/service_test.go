@@ -38,9 +38,6 @@ func TestNewService(t *testing.T) {
 	if svc == nil {
 		t.Fatal("Expected non-nil service")
 	}
-	if svc.repo != repo {
-		t.Error("Service repo mismatch")
-	}
 }
 
 func TestService_Create_Success(t *testing.T) {

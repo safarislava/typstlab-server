@@ -1,4 +1,4 @@
-package user
+package auth
 
 import (
 	"github.com/google/uuid"
@@ -6,11 +6,6 @@ import (
 	"github.com/safarislava/typstlab-server/internal/domain/token"
 	"github.com/safarislava/typstlab-server/internal/domain/user"
 )
-
-type PasswordHasher interface {
-	Hash(password string) (string, error)
-	Compare(hashedPassword, password string) error
-}
 
 type TokenService interface {
 	Generate(userID uuid.UUID, role user.Role) (token.Token, error)

@@ -9,10 +9,10 @@ import (
 )
 
 type ProjectHandler struct {
-	service *application.Service
+	service application.UseCase
 }
 
-func NewProjectHandler(service *application.Service) *ProjectHandler {
+func NewProjectHandler(service application.UseCase) *ProjectHandler {
 	return &ProjectHandler{
 		service: service,
 	}

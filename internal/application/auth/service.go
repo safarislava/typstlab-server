@@ -34,19 +34,26 @@ type RefreshResponse struct {
 	RefreshToken sessionDomain.Session
 }
 
+type UseCase interface {
+	Login(ctx context.Context, req LoginRequest) (*LoginResponse, error)
+	Refresh(ctx context.Context, req RefreshRequest) (*RefreshResponse, error)
+	Logout(ctx context.Context, refreshToken tokenDomain.Token) error
+	Authorize(t tokenDomain.Token) (uuid.UUID, domainUser.Role, error)
+}
+
 type Service struct {
-	userService         *userApp.Service
-	refreshTokenService *sessionApp.Service
-	tokenService        userApp.TokenService
-	hasher              userApp.PasswordHasher
+	userService         userApp.UseCase
+	refreshTokenService sessionApp.UseCase
+	tokenService        TokenService
+	hasher              PasswordHasher
 }
 
 func NewService(
-	userService *userApp.Service,
-	refreshTokenService *sessionApp.Service,
-	tokenService userApp.TokenService,
-	hasher userApp.PasswordHasher,
-) *Service {
+	userService userApp.UseCase,
+	refreshTokenService sessionApp.UseCase,
+	tokenService TokenService,
+	hasher PasswordHasher,
+) UseCase {
 	return &Service{
 		userService:         userService,
 		refreshTokenService: refreshTokenService,
