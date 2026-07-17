@@ -7,7 +7,6 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/safarislava/typstlab-server/internal/domain/token"
 	domain "github.com/safarislava/typstlab-server/internal/domain/user"
 )
 
@@ -23,26 +22,15 @@ type RegisterResponse struct {
 	Role  domain.Role
 }
 
-type LoginRequest struct {
-	Email    string
-	Password string
-}
-
-type LoginResponse struct {
-	Token token.Token
-}
-
 type Service struct {
-	repo         Repository
-	hasher       PasswordHasher
-	tokenService TokenService
+	repo   Repository
+	hasher PasswordHasher
 }
 
-func NewService(repo Repository, hasher PasswordHasher, tokenService TokenService) *Service {
+func NewService(repo Repository, hasher PasswordHasher) *Service {
 	return &Service{
-		repo:         repo,
-		hasher:       hasher,
-		tokenService: tokenService,
+		repo:   repo,
+		hasher: hasher,
 	}
 }
 
@@ -78,23 +66,18 @@ func (s *Service) Register(ctx context.Context, req RegisterRequest) (*RegisterR
 	}, nil
 }
 
-func (s *Service) Login(ctx context.Context, req LoginRequest) (*LoginResponse, error) {
-	u, err := s.repo.FindByEmail(ctx, req.Email)
+func (s *Service) GetByEmail(ctx context.Context, email string) (*domain.User, error) {
+	u, err := s.repo.FindByEmail(ctx, email)
 	if err != nil {
-		return nil, errors.New("invalid email or password")
+		return nil, fmt.Errorf("failed to find user by email: %w", err)
 	}
+	return u, nil
+}
 
-	err = s.hasher.Compare(u.PasswordHash(), req.Password)
+func (s *Service) GetByID(ctx context.Context, id uuid.UUID) (*domain.User, error) {
+	u, err := s.repo.FindByID(ctx, id)
 	if err != nil {
-		return nil, errors.New("invalid email or password")
+		return nil, fmt.Errorf("failed to find user by ID: %w", err)
 	}
-
-	t, err := s.tokenService.Generate(u.ID(), u.Role())
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate token: %w", err)
-	}
-
-	return &LoginResponse{
-		Token: t,
-	}, nil
+	return u, nil
 }
