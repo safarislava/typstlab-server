@@ -8,12 +8,12 @@ import (
 )
 
 type UserHandler struct {
-	service *user.Service
+	userService *user.Service
 }
 
-func NewUserHandler(service *user.Service) *UserHandler {
+func NewUserHandler(userService *user.Service) *UserHandler {
 	return &UserHandler{
-		service: service,
+		userService: userService,
 	}
 }
 
@@ -23,19 +23,10 @@ type jsonRegisterRequest struct {
 	Role     string `json:"role"`
 }
 
-type JSONRegisterResponse struct {
+type jsonRegisterResponse struct {
 	ID    string `json:"id"`
 	Email string `json:"email"`
 	Role  string `json:"role"`
-}
-
-type jsonLoginRequest struct {
-	Email    string `json:"email"`
-	Password string `json:"password"`
-}
-
-type JSONLoginResponse struct {
-	Token string `json:"token"`
 }
 
 func (h *UserHandler) Register(w http.ResponseWriter, r *http.Request) {
@@ -51,14 +42,14 @@ func (h *UserHandler) Register(w http.ResponseWriter, r *http.Request) {
 		Role:     jsonReq.Role,
 	}
 
-	resp, err := h.service.Register(r.Context(), req)
+	resp, err := h.userService.Register(r.Context(), req)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		_, _ = w.Write([]byte(err.Error()))
 		return
 	}
 
-	jsonResp := JSONRegisterResponse{
+	jsonResp := jsonRegisterResponse{
 		ID:    resp.ID.String(),
 		Email: resp.Email,
 		Role:  string(resp.Role),
@@ -66,33 +57,5 @@ func (h *UserHandler) Register(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	_ = json.NewEncoder(w).Encode(jsonResp)
-}
-
-func (h *UserHandler) Login(w http.ResponseWriter, r *http.Request) {
-	var jsonReq jsonLoginRequest
-	if err := json.NewDecoder(r.Body).Decode(&jsonReq); err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-
-	req := user.LoginRequest{
-		Email:    jsonReq.Email,
-		Password: jsonReq.Password,
-	}
-
-	resp, err := h.service.Login(r.Context(), req)
-	if err != nil {
-		w.WriteHeader(http.StatusUnauthorized)
-		_, _ = w.Write([]byte(err.Error()))
-		return
-	}
-
-	jsonResp := JSONLoginResponse{
-		Token: resp.Token.Value(),
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
 	_ = json.NewEncoder(w).Encode(jsonResp)
 }

@@ -7,7 +7,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/safarislava/typstlab-server/internal/application/user"
+	"github.com/safarislava/typstlab-server/internal/application/auth"
 	domainToken "github.com/safarislava/typstlab-server/internal/domain/token"
 	domainUser "github.com/safarislava/typstlab-server/internal/domain/user"
 )
@@ -20,12 +20,12 @@ const (
 )
 
 type AuthMiddleware struct {
-	tokenService user.TokenService
+	authService *auth.Service
 }
 
-func NewAuthMiddleware(tokenService user.TokenService) *AuthMiddleware {
+func NewAuthMiddleware(authService *auth.Service) *AuthMiddleware {
 	return &AuthMiddleware{
-		tokenService: tokenService,
+		authService: authService,
 	}
 }
 
@@ -43,14 +43,13 @@ func (m *AuthMiddleware) Authenticate(next http.Handler) http.Handler {
 			return
 		}
 
-		tokenStr := parts[1]
-		tok, err := domainToken.NewToken(tokenStr)
+		t, err := domainToken.NewToken(parts[1])
 		if err != nil {
 			next.ServeHTTP(w, r)
 			return
 		}
 
-		userID, role, err := m.tokenService.Validate(tok)
+		userID, role, err := m.authService.Authorize(t)
 		if err != nil {
 			next.ServeHTTP(w, r)
 			return

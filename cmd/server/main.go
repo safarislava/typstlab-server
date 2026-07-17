@@ -10,7 +10,9 @@ import (
 
 	"github.com/safarislava/typstlab-server/internal/domain/user"
 
+	appAuth "github.com/safarislava/typstlab-server/internal/application/auth"
 	projectApp "github.com/safarislava/typstlab-server/internal/application/project"
+	sessionApp "github.com/safarislava/typstlab-server/internal/application/session"
 	userApp "github.com/safarislava/typstlab-server/internal/application/user"
 	"github.com/safarislava/typstlab-server/internal/infrastructure/auth"
 	"github.com/safarislava/typstlab-server/internal/infrastructure/config"
@@ -36,15 +38,21 @@ func setupRouter(cfg *config.Config) *chi.Mux {
 
 	// Users / Auth components
 	userRepo := projectDb.NewMemoryUserRepository()
+	sessionRepo := projectDb.NewMemorySessionRepository()
 	hasher := auth.NewBcryptHasher(0)
 	tokenService := auth.NewJWTTokenService(cfg.JWTSecret, 24*time.Hour)
-	userService := userApp.NewService(userRepo, hasher, tokenService)
+	userService := userApp.NewService(userRepo, hasher)
+	sessionService := sessionApp.NewService(sessionRepo)
+	authUseCase := appAuth.NewService(userService, sessionService, tokenService, hasher)
 	userHandler := projectHttp.NewUserHandler(userService)
-	authMiddleware := projectHttp.NewAuthMiddleware(tokenService)
+	authHandler := projectHttp.NewAuthHandler(authUseCase)
+	authMiddleware := projectHttp.NewAuthMiddleware(authUseCase)
 
 	// Auth routes
 	r.Post("/register", userHandler.Register)
-	r.Post("/login", userHandler.Login)
+	r.Post("/login", authHandler.Login)
+	r.Post("/refresh", authHandler.Refresh)
+	r.Post("/logout", authHandler.Logout)
 
 	// Protected routes
 	r.Group(func(r chi.Router) {
