@@ -27,10 +27,10 @@ func newTestTypstFile(t *testing.T, blocks []block.Block) *file.TypstFile {
 func TestSerializeTypstFile(t *testing.T) {
 	t.Parallel()
 
-	crdt1 := []byte("crdt-state-1")
-	crdt2 := []byte("crdt-state-2")
-	b1, _ := block.NewBlock(testBlockID1, "Введение", crdt1, "= Введение\nТекст введения")
-	b2, _ := block.NewBlock(testBlockID2, "Глава 1", crdt2, "= Глава 1\nТекст главы")
+	state1 := []byte("state-1")
+	state2 := []byte("state-2")
+	b1, _ := block.NewBlock(testBlockID1, "Введение", state1, "= Введение\nТекст введения")
+	b2, _ := block.NewBlock(testBlockID2, "Глава 1", state2, "= Глава 1\nТекст главы")
 
 	f := newTestTypstFile(t, []block.Block{b1, b2})
 
@@ -54,24 +54,24 @@ func TestSerializeTypstFile(t *testing.T) {
 		t.Errorf("Expected block name 'Введение', got:\n%s", xmlStr)
 	}
 
-	expectedCRDT1 := base64.StdEncoding.EncodeToString(crdt1)
-	if !strings.Contains(xmlStr, `crdt_state="`+expectedCRDT1+`"`) {
-		t.Errorf("Expected base64 crdt_state for block 1, got:\n%s", xmlStr)
+	expectedState1 := base64.StdEncoding.EncodeToString(state1)
+	if !strings.Contains(xmlStr, `state="`+expectedState1+`"`) {
+		t.Errorf("Expected base64 state for block 1, got:\n%s", xmlStr)
 	}
 }
 
 func TestDeserializeTypstFile(t *testing.T) {
 	t.Parallel()
 
-	crdt1 := []byte("crdt-state-1")
-	crdt2 := []byte("crdt-state-2")
-	crdt1Base64 := base64.StdEncoding.EncodeToString(crdt1)
-	crdt2Base64 := base64.StdEncoding.EncodeToString(crdt2)
+	state1 := []byte("state-1")
+	state2 := []byte("state-2")
+	state1Base64 := base64.StdEncoding.EncodeToString(state1)
+	state2Base64 := base64.StdEncoding.EncodeToString(state2)
 
 	xmlData := `<file>
-    <block id="10000000-0000-0000-0000-000000000001" name="Введение" crdt_state="` + crdt1Base64 + `">= Введение
+    <block id="10000000-0000-0000-0000-000000000001" name="Введение" state="` + state1Base64 + `">= Введение
 Текст введения</block>
-    <block id="20000000-0000-0000-0000-000000000002" name="Глава 1" crdt_state="` + crdt2Base64 + `">= Глава 1
+    <block id="20000000-0000-0000-0000-000000000002" name="Глава 1" state="` + state2Base64 + `">= Глава 1
 Текст главы</block>
 </file>`
 
@@ -90,8 +90,8 @@ func TestDeserializeTypstFile(t *testing.T) {
 	if blocks[0].Name() != "Введение" {
 		t.Errorf("Block 0: expected Name 'Введение', got %q", blocks[0].Name())
 	}
-	if !bytes.Equal(blocks[0].CRDTState(), crdt1) {
-		t.Errorf("Block 0: CRDTState mismatch")
+	if !bytes.Equal(blocks[0].State(), state1) {
+		t.Errorf("Block 0: State mismatch")
 	}
 	if blocks[0].Content() != "= Введение\nТекст введения" {
 		t.Errorf("Block 0: expected content, got %q", blocks[0].Content())
@@ -105,8 +105,8 @@ func TestDeserializeTypstFile(t *testing.T) {
 func TestSerializeDeserializeTypstFile_Roundup(t *testing.T) {
 	t.Parallel()
 
-	crdt := []byte{0x00, 0xFF, 0xAB, 0xCD, 0xEF}
-	original, _ := block.NewBlock(testBlockID1, "Test Block", crdt, "= Test\nContent here")
+	state := []byte{0x00, 0xFF, 0xAB, 0xCD, 0xEF}
+	original, _ := block.NewBlock(testBlockID1, "Test Block", state, "= Test\nContent here")
 
 	f := newTestTypstFile(t, []block.Block{original})
 
@@ -130,8 +130,8 @@ func TestSerializeDeserializeTypstFile_Roundup(t *testing.T) {
 	if blocks[0].Name() != original.Name() {
 		t.Errorf("Name mismatch: %q vs %q", original.Name(), blocks[0].Name())
 	}
-	if !bytes.Equal(blocks[0].CRDTState(), original.CRDTState()) {
-		t.Errorf("CRDTState mismatch")
+	if !bytes.Equal(blocks[0].State(), original.State()) {
+		t.Errorf("State mismatch")
 	}
 	if blocks[0].Content() != original.Content() {
 		t.Errorf("Content mismatch: %q vs %q", original.Content(), blocks[0].Content())

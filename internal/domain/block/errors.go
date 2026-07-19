@@ -3,6 +3,6 @@ package block
 import "errors"
 
 var (
-	ErrEmptyBlockID   = errors.New("file id cannot be empty")
-	ErrEmptyBlockCrdt = errors.New("project id cannot be empty")
+	ErrEmptyBlockID    = errors.New("block id cannot be empty")
+	ErrEmptyBlockState = errors.New("block state cannot be empty")
 )
