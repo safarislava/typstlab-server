@@ -6,7 +6,7 @@ import (
 	"github.com/google/uuid"
 )
 
-func NewProject(id uuid.UUID, userIDs []uuid.UUID, name string, updatedAt time.Time) (*Project, error) {
+func NewProject(id uuid.UUID, userIDs, fileIDs []uuid.UUID, name string, updatedAt time.Time) (*Project, error) {
 	if id == uuid.Nil {
 		return nil, ErrEmptyID
 	}
@@ -27,7 +27,8 @@ func NewProject(id uuid.UUID, userIDs []uuid.UUID, name string, updatedAt time.T
 
 	return &Project{
 		id:        id,
-		userIDs:   userIDs,
+		userIDs:   append([]uuid.UUID(nil), userIDs...),
+		fileIDs:   append([]uuid.UUID(nil), fileIDs...),
 		name:      name,
 		updatedAt: updatedAt,
 	}, nil
