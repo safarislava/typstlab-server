@@ -56,7 +56,7 @@ func NewService(repo Repository, merger Merger) UseCase {
 }
 
 func (s *Service) CreateTypstFile(ctx context.Context, req CreateTypstFileRequest) (*domainFile.TypstFile, error) {
-	initialState := []byte{}
+	var initialState []byte
 	f, err := domainFile.NewTypstFile(uuid.New(), req.ProjectID, req.Name, initialState, []block.Block(nil), time.Now())
 	if err != nil {
 		return nil, fmt.Errorf("failed to create typst file: %w", err)

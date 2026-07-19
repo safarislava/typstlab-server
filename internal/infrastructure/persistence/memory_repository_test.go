@@ -15,6 +15,26 @@ import (
 
 const testRepoRefreshToken = "my-refresh-token"
 
+func createAndSaveTestSession(ctx context.Context, t *testing.T, repo *MemorySessionRepository, tokenStr string, userID uuid.UUID) (session.Session, token.Token) {
+	t.Helper()
+	expiresAt := time.Now().Add(1 * time.Hour)
+
+	rtVal, err := token.NewToken(tokenStr)
+	if err != nil {
+		t.Fatalf("Failed to create token value: %v", err)
+	}
+	rt, err := session.NewSession(rtVal, userID, expiresAt)
+	if err != nil {
+		t.Fatalf("Failed to create session: %v", err)
+	}
+
+	err = repo.Save(ctx, rt)
+	if err != nil {
+		t.Fatalf("Failed to save session: %v", err)
+	}
+	return rt, rtVal
+}
+
 func TestMemoryProjectRepository(t *testing.T) {
 	t.Parallel()
 
@@ -121,21 +141,8 @@ func TestMemorySessionRepository_SaveAndFind(t *testing.T) {
 
 	userID := uuid.New()
 	tokenStr := testRepoRefreshToken
-	expiresAt := time.Now().Add(1 * time.Hour)
 
-	rtVal, err := token.NewToken(tokenStr)
-	if err != nil {
-		t.Fatalf("Failed to create token value: %v", err)
-	}
-	rt, err := session.NewSession(rtVal, userID, expiresAt)
-	if err != nil {
-		t.Fatalf("Failed to create session: %v", err)
-	}
-
-	err = repo.Save(ctx, rt)
-	if err != nil {
-		t.Fatalf("Failed to save session: %v", err)
-	}
+	_, rtVal := createAndSaveTestSession(ctx, t, repo, tokenStr, userID)
 
 	found, err := repo.FindByToken(ctx, rtVal)
 	if err != nil {
@@ -154,19 +161,10 @@ func TestMemorySessionRepository_Delete(t *testing.T) {
 
 	userID := uuid.New()
 	tokenStr := testRepoRefreshToken
-	expiresAt := time.Now().Add(1 * time.Hour)
 
-	rtVal, err := token.NewToken(tokenStr)
-	if err != nil {
-		t.Fatalf("Failed to create token value: %v", err)
-	}
-	rt, err := session.NewSession(rtVal, userID, expiresAt)
-	if err != nil {
-		t.Fatalf("Failed to create session: %v", err)
-	}
+	_, rtVal := createAndSaveTestSession(ctx, t, repo, tokenStr, userID)
 
-	_ = repo.Save(ctx, rt)
-	err = repo.Delete(ctx, rtVal)
+	err := repo.Delete(ctx, rtVal)
 	if err != nil {
 		t.Fatalf("Failed to delete session: %v", err)
 	}
@@ -183,19 +181,11 @@ func TestMemorySessionRepository_DeleteByUserID(t *testing.T) {
 	ctx := context.Background()
 
 	userID := uuid.New()
-	expiresAt := time.Now().Add(1 * time.Hour)
+	tokenStr := "another-token"
 
-	rt2Val, err := token.NewToken("another-token")
-	if err != nil {
-		t.Fatalf("Failed to create token value: %v", err)
-	}
-	rt2, err := session.NewSession(rt2Val, userID, expiresAt)
-	if err != nil {
-		t.Fatalf("Failed to create session: %v", err)
-	}
+	_, rt2Val := createAndSaveTestSession(ctx, t, repo, tokenStr, userID)
 
-	_ = repo.Save(ctx, rt2)
-	err = repo.DeleteByUserID(ctx, userID)
+	err := repo.DeleteByUserID(ctx, userID)
 	if err != nil {
 		t.Fatalf("Failed to delete by user ID: %v", err)
 	}
