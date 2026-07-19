@@ -107,38 +107,25 @@ func (s *Service) ApplyBlockChanges(ctx context.Context, req ApplyBlockChangesRe
 		return nil, fmt.Errorf("failed to find typst file: %w", err)
 	}
 
-	blocks := f.Blocks()
-	found := false
-	for i, b := range blocks {
-		if b.ID() != req.BlockID {
-			continue
-		}
-
-		state, content, mergeErr := s.merger.MergeBlock(b.State(), req.Delta)
-		if mergeErr != nil {
-			return nil, fmt.Errorf("failed to merge block: %w", mergeErr)
-		}
-
-		newBlock, blockErr := block.NewBlock(b.ID(), b.Name(), state, content)
-		if blockErr != nil {
-			return nil, fmt.Errorf("failed to create new block: %w", blockErr)
-		}
-
-		blocks[i] = newBlock
-		found = true
-		break
+	b, err := f.FindBlockByID(req.BlockID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find block in file: %w", err)
 	}
 
-	if !found {
-		return nil, fmt.Errorf("block %s not found in file %s", req.BlockID, req.FileID)
+	state, content, err := s.merger.MergeBlock(b.State(), req.Delta)
+	if err != nil {
+		return nil, fmt.Errorf("failed to merge block: %w", err)
 	}
 
-	newFile, fileErr := domainFile.NewTypstFile(f.ID(), f.ProjectID(), f.Name(), blocks, time.Now())
-	if fileErr != nil {
-		return nil, fmt.Errorf("failed to create new typst file: %w", fileErr)
+	if err := f.UpdateBlock(req.BlockID, state, content); err != nil {
+		return nil, fmt.Errorf("failed to update block in file aggregate: %w", err)
 	}
 
-	return newFile, nil
+	if err := s.repo.SaveTypstFile(ctx, f); err != nil {
+		return nil, fmt.Errorf("failed to save updated typst file: %w", err)
+	}
+
+	return f, nil
 }
 
 func (s *Service) DeleteFile(ctx context.Context, fileID uuid.UUID) error {

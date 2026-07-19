@@ -1,6 +1,7 @@
 package file
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -91,4 +92,29 @@ func (f *TypstFile) Blocks() []block.Block {
 		return nil
 	}
 	return append([]block.Block(nil), f.blocks...)
+}
+
+func (f *TypstFile) FindBlockByID(blockID uuid.UUID) (block.Block, error) {
+	for _, b := range f.blocks {
+		if b.ID() == blockID {
+			return b, nil
+		}
+	}
+	return block.Block{}, ErrBlockNotFound
+}
+
+func (f *TypstFile) UpdateBlock(blockID uuid.UUID, state []byte, content string) error {
+	for i, b := range f.blocks {
+		if b.ID() != blockID {
+			continue
+		}
+		newBlock, err := block.NewBlock(blockID, b.Name(), state, content)
+		if err != nil {
+			return fmt.Errorf("failed to create block: %w", err)
+		}
+		f.blocks[i] = newBlock
+		f.updatedAt = time.Now()
+		return nil
+	}
+	return ErrBlockNotFound
 }

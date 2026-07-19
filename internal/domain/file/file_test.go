@@ -91,3 +91,56 @@ func TestNewTypstFile(t *testing.T) {
 		t.Errorf("Expected ErrEmptyFileName, got %v", err)
 	}
 }
+
+func TestTypstFile_FindBlockByID(t *testing.T) {
+	t.Parallel()
+
+	id := uuid.New()
+	projectID := uuid.New()
+	b1, _ := block.NewBlock(testBlockID, "Introduction", []byte("state1"), "Hello")
+	f, _ := NewTypstFile(id, projectID, "doc.typ", []block.Block{b1}, time.Now())
+
+	found, err := f.FindBlockByID(testBlockID)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if found.ID() != testBlockID {
+		t.Errorf("expected block ID %v, got %v", testBlockID, found.ID())
+	}
+
+	_, err = f.FindBlockByID(uuid.New())
+	if !errors.Is(err, ErrBlockNotFound) {
+		t.Errorf("expected ErrBlockNotFound, got %v", err)
+	}
+}
+
+func TestTypstFile_UpdateBlock(t *testing.T) {
+	t.Parallel()
+
+	id := uuid.New()
+	projectID := uuid.New()
+	b1, _ := block.NewBlock(testBlockID, "Introduction", []byte("state1"), "Hello")
+	f, _ := NewTypstFile(id, projectID, "doc.typ", []block.Block{b1}, time.Now())
+
+	err := f.UpdateBlock(testBlockID, []byte("new-state"), "Updated Hello")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	updated, err := f.FindBlockByID(testBlockID)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if updated.Content() != "Updated Hello" {
+		t.Errorf("expected 'Updated Hello', got %q", updated.Content())
+	}
+	if !bytes.Equal(updated.State(), []byte("new-state")) {
+		t.Errorf("expected 'new-state', got %s", updated.State())
+	}
+
+	// Update non-existent block
+	err = f.UpdateBlock(uuid.New(), []byte("state"), "content")
+	if !errors.Is(err, ErrBlockNotFound) {
+		t.Errorf("expected ErrBlockNotFound, got %v", err)
+	}
+}
