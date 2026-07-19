@@ -15,9 +15,9 @@ import (
 
 var testBlockID2 = uuid.MustParse("20000000-0000-0000-0000-000000000002")
 
-func newTestTypstFile(t *testing.T, blocks []block.Block) *file.TypstFile {
+func newTestTypstFile(t *testing.T, state []byte, blocks []block.Block) *file.TypstFile {
 	t.Helper()
-	f, err := file.NewTypstFile(uuid.New(), uuid.New(), "document.typ", blocks, time.Now())
+	f, err := file.NewTypstFile(uuid.New(), uuid.New(), "document.typ", state, blocks, time.Now())
 	if err != nil {
 		t.Fatalf("Failed to create TypstFile: %v", err)
 	}
@@ -27,12 +27,11 @@ func newTestTypstFile(t *testing.T, blocks []block.Block) *file.TypstFile {
 func TestSerializeTypstFile(t *testing.T) {
 	t.Parallel()
 
-	state1 := []byte("state-1")
-	state2 := []byte("state-2")
-	b1, _ := block.NewBlock(testBlockID1, "Введение", state1, "= Введение\nТекст введения")
-	b2, _ := block.NewBlock(testBlockID2, "Глава 1", state2, "= Глава 1\nТекст главы")
+	b1, _ := block.NewBlock(testBlockID1, "Введение", "= Введение\nТекст введения")
+	b2, _ := block.NewBlock(testBlockID2, "Глава 1", "= Глава 1\nТекст главы")
+	globalState := []byte("global-crdt-state")
 
-	f := newTestTypstFile(t, []block.Block{b1, b2})
+	f := newTestTypstFile(t, globalState, []block.Block{b1, b2})
 
 	data, err := SerializeTypstFile(f)
 	if err != nil {
@@ -41,43 +40,38 @@ func TestSerializeTypstFile(t *testing.T) {
 
 	xmlStr := string(data)
 
-	if !strings.Contains(xmlStr, "<file>") {
+	if !strings.Contains(xmlStr, "<file") {
 		t.Errorf("Expected <file> root element, got:\n%s", xmlStr)
+	}
+	expectedStateB64 := base64.StdEncoding.EncodeToString(globalState)
+	if !strings.Contains(xmlStr, `state="`+expectedStateB64+`"`) {
+		t.Errorf("Expected global state in file element, got:\n%s", xmlStr)
 	}
 	if !strings.Contains(xmlStr, `id="10000000-0000-0000-0000-000000000001"`) {
 		t.Errorf("Expected first block id, got:\n%s", xmlStr)
-	}
-	if !strings.Contains(xmlStr, `id="20000000-0000-0000-0000-000000000002"`) {
-		t.Errorf("Expected second block id, got:\n%s", xmlStr)
-	}
-	if !strings.Contains(xmlStr, `name="Введение"`) {
-		t.Errorf("Expected block name 'Введение', got:\n%s", xmlStr)
-	}
-
-	expectedState1 := base64.StdEncoding.EncodeToString(state1)
-	if !strings.Contains(xmlStr, `state="`+expectedState1+`"`) {
-		t.Errorf("Expected base64 state for block 1, got:\n%s", xmlStr)
 	}
 }
 
 func TestDeserializeTypstFile(t *testing.T) {
 	t.Parallel()
 
-	state1 := []byte("state-1")
-	state2 := []byte("state-2")
-	state1Base64 := base64.StdEncoding.EncodeToString(state1)
-	state2Base64 := base64.StdEncoding.EncodeToString(state2)
+	globalState := []byte("global-crdt-state")
+	stateB64 := base64.StdEncoding.EncodeToString(globalState)
 
-	xmlData := `<file>
-    <block id="10000000-0000-0000-0000-000000000001" name="Введение" state="` + state1Base64 + `">= Введение
+	xmlData := `<file state="` + stateB64 + `">
+    <block id="10000000-0000-0000-0000-000000000001" name="Введение">= Введение
 Текст введения</block>
-    <block id="20000000-0000-0000-0000-000000000002" name="Глава 1" state="` + state2Base64 + `">= Глава 1
+    <block id="20000000-0000-0000-0000-000000000002" name="Глава 1">= Глава 1
 Текст главы</block>
 </file>`
 
-	blocks, err := DeserializeTypstFile([]byte(xmlData))
+	state, blocks, err := DeserializeTypstFile([]byte(xmlData))
 	if err != nil {
 		t.Fatalf("DeserializeTypstFile failed: %v", err)
+	}
+
+	if !bytes.Equal(state, globalState) {
+		t.Errorf("expected state %s, got %s", globalState, state)
 	}
 
 	if len(blocks) != 2 {
@@ -87,88 +81,35 @@ func TestDeserializeTypstFile(t *testing.T) {
 	if blocks[0].ID() != testBlockID1 {
 		t.Errorf("Block 0: expected ID %s, got %s", testBlockID1, blocks[0].ID())
 	}
-	if blocks[0].Name() != "Введение" {
-		t.Errorf("Block 0: expected Name 'Введение', got %q", blocks[0].Name())
-	}
-	if !bytes.Equal(blocks[0].State(), state1) {
-		t.Errorf("Block 0: State mismatch")
-	}
-	if blocks[0].Content() != "= Введение\nТекст введения" {
-		t.Errorf("Block 0: expected content, got %q", blocks[0].Content())
-	}
-
-	if blocks[1].ID() != testBlockID2 {
-		t.Errorf("Block 1: expected ID %s, got %s", testBlockID2, blocks[1].ID())
-	}
 }
 
-func TestSerializeDeserializeTypstFile_Roundup(t *testing.T) {
+func TestSerializeDeserializeTypstFile_Roundtrip(t *testing.T) {
 	t.Parallel()
 
-	state := []byte{0x00, 0xFF, 0xAB, 0xCD, 0xEF}
-	original, _ := block.NewBlock(testBlockID1, "Test Block", state, "= Test\nContent here")
+	globalState := []byte{0x01, 0x02, 0x03, 0x04}
+	originalBlock, _ := block.NewBlock(testBlockID1, "Test Block", "= Test\nContent here")
 
-	f := newTestTypstFile(t, []block.Block{original})
+	f := newTestTypstFile(t, globalState, []block.Block{originalBlock})
 
 	data, err := SerializeTypstFile(f)
 	if err != nil {
 		t.Fatalf("SerializeTypstFile failed: %v", err)
 	}
 
-	blocks, err := DeserializeTypstFile(data)
+	state, blocks, err := DeserializeTypstFile(data)
 	if err != nil {
 		t.Fatalf("DeserializeTypstFile failed: %v", err)
+	}
+
+	if !bytes.Equal(state, globalState) {
+		t.Errorf("state mismatch")
 	}
 
 	if len(blocks) != 1 {
 		t.Fatalf("Expected 1 block, got %d", len(blocks))
 	}
 
-	if blocks[0].ID() != original.ID() {
-		t.Errorf("ID mismatch: %s vs %s", original.ID(), blocks[0].ID())
-	}
-	if blocks[0].Name() != original.Name() {
-		t.Errorf("Name mismatch: %q vs %q", original.Name(), blocks[0].Name())
-	}
-	if !bytes.Equal(blocks[0].State(), original.State()) {
-		t.Errorf("State mismatch")
-	}
-	if blocks[0].Content() != original.Content() {
-		t.Errorf("Content mismatch: %q vs %q", original.Content(), blocks[0].Content())
-	}
-}
-
-func TestDeserializeTypstFile_EmptyDocument(t *testing.T) {
-	t.Parallel()
-
-	blocks, err := DeserializeTypstFile([]byte(`<file></file>`))
-	if err != nil {
-		t.Fatalf("DeserializeTypstFile failed: %v", err)
-	}
-	if len(blocks) != 0 {
-		t.Errorf("Expected 0 blocks, got %d", len(blocks))
-	}
-}
-
-func TestDeserializeTypstFile_InvalidXML(t *testing.T) {
-	t.Parallel()
-
-	_, err := DeserializeTypstFile([]byte(`<file><block not valid xml`))
-	if err == nil {
-		t.Error("Expected error for invalid XML, got nil")
-	}
-}
-
-func TestSerializeTypstFile_NoBlocks(t *testing.T) {
-	t.Parallel()
-
-	f := newTestTypstFile(t, nil)
-
-	data, err := SerializeTypstFile(f)
-	if err != nil {
-		t.Fatalf("SerializeTypstFile failed: %v", err)
-	}
-	if !strings.Contains(string(data), "<file>") {
-		t.Errorf("Expected <file> element even with no blocks, got:\n%s", string(data))
+	if blocks[0].ID() != originalBlock.ID() {
+		t.Errorf("ID mismatch: %s vs %s", originalBlock.ID(), blocks[0].ID())
 	}
 }

@@ -1,5 +1,9 @@
 package file
 
+import (
+	"github.com/safarislava/typstlab-server/internal/domain/block"
+)
+
 type Merger interface {
-	MergeBlock(state, delta []byte) (newState []byte, content string, err error)
+	MergeFile(state, delta []byte) (newState []byte, updatedBlocks []block.Block, err error)
 }

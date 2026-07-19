@@ -52,16 +52,17 @@ func TestNewBinaryFile(t *testing.T) {
 	}
 }
 
-func TestNewTypstFile(t *testing.T) {
+func TestNewTypstFile_Success(t *testing.T) {
 	t.Parallel()
 
 	id := uuid.New()
 	projectID := uuid.New()
 	now := time.Now()
-	b, _ := block.NewBlock(testBlockID, "Introduction", []byte("state"), "Hello")
+	b, _ := block.NewBlock(testBlockID, "Introduction", "Hello")
 	blocks := []block.Block{b}
+	state := []byte("global-state")
 
-	f, err := NewTypstFile(id, projectID, "document.typ", blocks, now)
+	f, err := NewTypstFile(id, projectID, "document.typ", state, blocks, now)
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
@@ -78,69 +79,57 @@ func TestNewTypstFile(t *testing.T) {
 	if f.Type() != TypeTypst {
 		t.Errorf("Expected Type 'typst', got %q", f.Type())
 	}
+	if !bytes.Equal(f.State(), state) {
+		t.Errorf("Expected State %s, got %s", state, f.State())
+	}
 	if len(f.Blocks()) != 1 || f.Blocks()[0].ID() != testBlockID {
 		t.Errorf("Expected 1 block with ID 'block-1', got %v", f.Blocks())
 	}
 	if !f.UpdatedAt().Equal(now) {
 		t.Errorf("Expected UpdatedAt %v, got %v", now, f.UpdatedAt())
 	}
+}
 
-	// Test validation
-	_, err = NewTypstFile(id, projectID, "", blocks, now)
+func TestNewTypstFile_ValidationError(t *testing.T) {
+	t.Parallel()
+
+	id := uuid.New()
+	projectID := uuid.New()
+	now := time.Now()
+	b, _ := block.NewBlock(testBlockID, "Introduction", "Hello")
+	blocks := []block.Block{b}
+	state := []byte("global-state")
+
+	_, err := NewTypstFile(id, projectID, "", state, blocks, now)
 	if !errors.Is(err, ErrEmptyFileName) {
 		t.Errorf("Expected ErrEmptyFileName, got %v", err)
 	}
 }
 
-func TestTypstFile_FindBlockByID(t *testing.T) {
+func TestTypstFile_UpdateState(t *testing.T) {
 	t.Parallel()
 
 	id := uuid.New()
 	projectID := uuid.New()
-	b1, _ := block.NewBlock(testBlockID, "Introduction", []byte("state1"), "Hello")
-	f, _ := NewTypstFile(id, projectID, "doc.typ", []block.Block{b1}, time.Now())
+	b1, _ := block.NewBlock(testBlockID, "Introduction", "Hello")
+	f, _ := NewTypstFile(id, projectID, "doc.typ", []byte("initial"), []block.Block{b1}, time.Now())
 
-	found, err := f.FindBlockByID(testBlockID)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if found.ID() != testBlockID {
-		t.Errorf("expected block ID %v, got %v", testBlockID, found.ID())
-	}
-
-	_, err = f.FindBlockByID(uuid.New())
-	if !errors.Is(err, ErrBlockNotFound) {
-		t.Errorf("expected ErrBlockNotFound, got %v", err)
-	}
-}
-
-func TestTypstFile_UpdateBlock(t *testing.T) {
-	t.Parallel()
-
-	id := uuid.New()
-	projectID := uuid.New()
-	b1, _ := block.NewBlock(testBlockID, "Introduction", []byte("state1"), "Hello")
-	f, _ := NewTypstFile(id, projectID, "doc.typ", []block.Block{b1}, time.Now())
-
-	err := f.UpdateBlock(testBlockID, []byte("new-state"), "Updated Hello")
+	b2, _ := block.NewBlock(uuid.New(), "New Section", "Some content")
+	newState := []byte("updated-state")
+	err := f.UpdateState(newState, []block.Block{b1, b2})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	updated, err := f.FindBlockByID(testBlockID)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	if !bytes.Equal(f.State(), newState) {
+		t.Errorf("expected state %s, got %s", newState, f.State())
 	}
-	if updated.Content() != "Updated Hello" {
-		t.Errorf("expected 'Updated Hello', got %q", updated.Content())
-	}
-	if !bytes.Equal(updated.State(), []byte("new-state")) {
-		t.Errorf("expected 'new-state', got %s", updated.State())
+	if len(f.Blocks()) != 2 {
+		t.Errorf("expected 2 blocks, got %d", len(f.Blocks()))
 	}
 
-	// Update non-existent block
-	err = f.UpdateBlock(uuid.New(), []byte("state"), "content")
-	if !errors.Is(err, ErrBlockNotFound) {
-		t.Errorf("expected ErrBlockNotFound, got %v", err)
+	err = f.UpdateState(nil, nil)
+	if err == nil {
+		t.Error("expected error for nil state, got nil")
 	}
 }

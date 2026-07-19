@@ -1,6 +1,7 @@
 package serialization
 
 import (
+	"encoding/base64"
 	"encoding/xml"
 	"fmt"
 
@@ -10,12 +11,14 @@ import (
 
 type xmlTypstFile struct {
 	XMLName xml.Name   `xml:"file"`
+	State   string     `xml:"state,attr"`
 	Blocks  []xmlBlock `xml:"block"`
 }
 
 func SerializeTypstFile(f *file.TypstFile) ([]byte, error) {
 	blocks := f.Blocks()
 	typstFile := xmlTypstFile{
+		State:  base64.StdEncoding.EncodeToString(f.State()),
 		Blocks: make([]xmlBlock, len(blocks)),
 	}
 
@@ -31,20 +34,25 @@ func SerializeTypstFile(f *file.TypstFile) ([]byte, error) {
 	return serialized, nil
 }
 
-func DeserializeTypstFile(data []byte) ([]block.Block, error) {
+func DeserializeTypstFile(data []byte) ([]byte, []block.Block, error) {
 	var doc xmlTypstFile
 	if err := xml.Unmarshal(data, &doc); err != nil {
-		return nil, fmt.Errorf("failed to deserialize typst file: %w", err)
+		return nil, nil, fmt.Errorf("failed to deserialize typst file: %w", err)
+	}
+
+	decodedState, err := base64.StdEncoding.DecodeString(doc.State)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to decode global file state: %w", err)
 	}
 
 	blocks := make([]block.Block, 0, len(doc.Blocks))
 	for _, xb := range doc.Blocks {
 		b, err := deserializeBlock(&xb)
 		if err != nil {
-			return nil, err
+			return nil, nil, fmt.Errorf("failed to deserialize block: %w", err)
 		}
 		blocks = append(blocks, b)
 	}
 
-	return blocks, nil
+	return decodedState, blocks, nil
 }

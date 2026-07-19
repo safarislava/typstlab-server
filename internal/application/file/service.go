@@ -8,7 +8,6 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/safarislava/typstlab-server/internal/domain/block"
-
 	domainFile "github.com/safarislava/typstlab-server/internal/domain/file"
 )
 
@@ -23,10 +22,9 @@ type CreateBinaryFileRequest struct {
 	Content   []byte
 }
 
-type ApplyBlockChangesRequest struct {
-	FileID  uuid.UUID
-	BlockID uuid.UUID
-	Delta   []byte
+type ApplyFileChangesRequest struct {
+	FileID uuid.UUID
+	Delta  []byte
 }
 
 type Response struct {
@@ -41,7 +39,7 @@ type UseCase interface {
 	CreateBinaryFile(ctx context.Context, req CreateBinaryFileRequest) (*domainFile.BinaryFile, error)
 	GetTypstFile(ctx context.Context, fileID uuid.UUID) (*domainFile.TypstFile, error)
 	GetBinaryFile(ctx context.Context, fileID uuid.UUID) (*domainFile.BinaryFile, error)
-	ApplyBlockChanges(ctx context.Context, req ApplyBlockChangesRequest) (*domainFile.TypstFile, error)
+	ApplyFileChanges(ctx context.Context, req ApplyFileChangesRequest) (*domainFile.TypstFile, error)
 	DeleteFile(ctx context.Context, fileID uuid.UUID) error
 }
 
@@ -58,7 +56,8 @@ func NewService(repo Repository, merger Merger) UseCase {
 }
 
 func (s *Service) CreateTypstFile(ctx context.Context, req CreateTypstFileRequest) (*domainFile.TypstFile, error) {
-	f, err := domainFile.NewTypstFile(uuid.New(), req.ProjectID, req.Name, []block.Block(nil), time.Now())
+	initialState := []byte{}
+	f, err := domainFile.NewTypstFile(uuid.New(), req.ProjectID, req.Name, initialState, []block.Block(nil), time.Now())
 	if err != nil {
 		return nil, fmt.Errorf("failed to create typst file: %w", err)
 	}
@@ -101,24 +100,19 @@ func (s *Service) GetBinaryFile(ctx context.Context, fileID uuid.UUID) (*domainF
 	return f, nil
 }
 
-func (s *Service) ApplyBlockChanges(ctx context.Context, req ApplyBlockChangesRequest) (*domainFile.TypstFile, error) {
+func (s *Service) ApplyFileChanges(ctx context.Context, req ApplyFileChangesRequest) (*domainFile.TypstFile, error) {
 	f, err := s.repo.FindTypstFileByID(ctx, req.FileID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find typst file: %w", err)
 	}
 
-	b, err := f.FindBlockByID(req.BlockID)
+	state, blocks, err := s.merger.MergeFile(f.State(), req.Delta)
 	if err != nil {
-		return nil, fmt.Errorf("failed to find block in file: %w", err)
+		return nil, fmt.Errorf("failed to merge file delta: %w", err)
 	}
 
-	state, content, err := s.merger.MergeBlock(b.State(), req.Delta)
-	if err != nil {
-		return nil, fmt.Errorf("failed to merge block: %w", err)
-	}
-
-	if err := f.UpdateBlock(req.BlockID, state, content); err != nil {
-		return nil, fmt.Errorf("failed to update block in file aggregate: %w", err)
+	if err := f.UpdateState(state, blocks); err != nil {
+		return nil, fmt.Errorf("failed to update typst file aggregate state: %w", err)
 	}
 
 	if err := s.repo.SaveTypstFile(ctx, f); err != nil {

@@ -20,7 +20,7 @@ func TestMemoryFileRepository_SaveAndFindTypst(t *testing.T) {
 	projectID := uuid.New()
 	fileID := uuid.New()
 
-	tf, err := domainFile.NewTypstFile(fileID, projectID, "doc.typ", []block.Block(nil), time.Now())
+	tf, err := domainFile.NewTypstFile(fileID, projectID, "doc.typ", []byte("initial-state"), []block.Block(nil), time.Now())
 	if err != nil {
 		t.Fatalf("failed to create typst file: %v", err)
 	}
@@ -75,7 +75,7 @@ func TestMemoryFileRepository_FindByProjectID(t *testing.T) {
 	fileID1 := uuid.New()
 	fileID2 := uuid.New()
 
-	tf, err1 := domainFile.NewTypstFile(fileID1, projectID, "doc.typ", []block.Block(nil), time.Now())
+	tf, err1 := domainFile.NewTypstFile(fileID1, projectID, "doc.typ", []byte("initial-state"), []block.Block(nil), time.Now())
 	if err1 != nil {
 		t.Fatalf("failed to create typst file: %v", err1)
 	}
@@ -109,7 +109,7 @@ func TestMemoryFileRepository_Delete(t *testing.T) {
 	projectID := uuid.New()
 	fileID := uuid.New()
 
-	tf, err := domainFile.NewTypstFile(fileID, projectID, "doc.typ", []block.Block(nil), time.Now())
+	tf, err := domainFile.NewTypstFile(fileID, projectID, "doc.typ", []byte("initial-state"), []block.Block(nil), time.Now())
 	if err != nil {
 		t.Fatalf("failed to create typst file: %v", err)
 	}
