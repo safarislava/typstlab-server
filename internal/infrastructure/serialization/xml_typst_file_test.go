@@ -27,8 +27,14 @@ func newTestTypstFile(t *testing.T, state []byte, blocks []block.Block) *file.Ty
 func TestSerializeTypstFile(t *testing.T) {
 	t.Parallel()
 
-	b1, _ := block.NewBlock(testBlockID1, "Введение", "= Введение\nТекст введения")
-	b2, _ := block.NewBlock(testBlockID2, "Глава 1", "= Глава 1\nТекст главы")
+	b1, err := block.NewBlock(testBlockID1, "Введение", "= Введение\nТекст введения")
+	if err != nil {
+		t.Fatalf("Failed to create block 1: %v", err)
+	}
+	b2, err := block.NewBlock(testBlockID2, "Глава 1", "= Глава 1\nТекст главы")
+	if err != nil {
+		t.Fatalf("Failed to create block 2: %v", err)
+	}
 	globalState := []byte("global-crdt-state")
 
 	f := newTestTypstFile(t, globalState, []block.Block{b1, b2})
@@ -87,7 +93,10 @@ func TestSerializeDeserializeTypstFile_Roundtrip(t *testing.T) {
 	t.Parallel()
 
 	globalState := []byte{0x01, 0x02, 0x03, 0x04}
-	originalBlock, _ := block.NewBlock(testBlockID1, "Test Block", "= Test\nContent here")
+	originalBlock, err := block.NewBlock(testBlockID1, "Test Block", "= Test\nContent here")
+	if err != nil {
+		t.Fatalf("Failed to create block: %v", err)
+	}
 
 	f := newTestTypstFile(t, globalState, []block.Block{originalBlock})
 

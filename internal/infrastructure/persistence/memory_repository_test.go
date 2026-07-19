@@ -126,8 +126,11 @@ func TestMemorySessionRepository_FindNonExistent(t *testing.T) {
 	repo := NewMemorySessionRepository()
 	ctx := context.Background()
 
-	tVal, _ := token.NewToken("non-existent")
-	_, err := repo.FindByToken(ctx, tVal)
+	tVal, err := token.NewToken("non-existent")
+	if err != nil {
+		t.Fatalf("Failed to create token: %v", err)
+	}
+	_, err = repo.FindByToken(ctx, tVal)
 	if err == nil {
 		t.Error("Expected error when searching for non-existent token, got nil")
 	}

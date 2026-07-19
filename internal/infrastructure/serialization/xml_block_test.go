@@ -18,7 +18,10 @@ const (
 func TestSerializeBlock(t *testing.T) {
 	t.Parallel()
 
-	b, _ := block.NewBlock(testBlockID1, testBlockName, testBlockContent)
+	b, err := block.NewBlock(testBlockID1, testBlockName, testBlockContent)
+	if err != nil {
+		t.Fatalf("Failed to create block: %v", err)
+	}
 
 	xb := serializeBlock(b)
 
@@ -61,7 +64,10 @@ func TestDeserializeBlock(t *testing.T) {
 func TestSerializeDeserializeBlock_Roundtrip(t *testing.T) {
 	t.Parallel()
 
-	original, _ := block.NewBlock(testBlockID1, "Chapter", "= Chapter\nContent")
+	original, err := block.NewBlock(testBlockID1, "Chapter", "= Chapter\nContent")
+	if err != nil {
+		t.Fatalf("Failed to create block: %v", err)
+	}
 
 	xb := serializeBlock(original)
 	restored, err := deserializeBlock(&xb)
