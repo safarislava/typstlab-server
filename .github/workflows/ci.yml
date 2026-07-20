@@ -35,6 +35,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - name: Set up Go
         uses: actions/setup-go@v6
@@ -49,12 +51,11 @@ jobs:
         run: go mod verify
 
       - name: Run tests and check coverage
-        uses: gwatts/go-coverage-action@v2
-        with:
-          coverage-threshold: 80
-          fail-coverage: always
-          cover-mode: atomic
-          test-args: '["-v", "-race"]'
+        run: |
+          go test -v -race -covermode=atomic -coverprofile=coverage.out ./...
+          COVERAGE=$(go tool cover -func=coverage.out | grep total: | awk '{print $3}' | tr -d '%')
+          echo "Total Coverage: ${COVERAGE}%"
+          awk -v cov="$COVERAGE" -v min="80.0" 'BEGIN { if (cov < min) { printf "Error: Code coverage (%.1f%%) is below threshold (%.1f%%)\n", cov, min; exit 1 } }'
 
       - name: Build binary
         run: go build -v ./...
