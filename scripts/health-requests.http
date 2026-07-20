@@ -1,5 +1,5 @@
 ### Configuration Variables
-@host = https://typstlab-server.onrender.com/
+@host = localhost:8080
 
 ### 1. Health Check
 GET {{host}}/health
