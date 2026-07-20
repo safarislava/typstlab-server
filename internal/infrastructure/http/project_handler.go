@@ -72,10 +72,10 @@ func (h *ProjectHandler) Create(w http.ResponseWriter, r *http.Request) {
 }
 
 type JSONProjectResponse struct {
-	ID        string    `json:"id"`
-	Name      string    `json:"name"`
-	UserIDs   []string  `json:"user_ids"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID        string   `json:"id"`
+	Name      string   `json:"name"`
+	UserIDs   []string `json:"user_ids"`
+	UpdatedAt string   `json:"updated_at"`
 }
 
 func (h *ProjectHandler) Get(w http.ResponseWriter, r *http.Request) {
@@ -116,7 +116,7 @@ func (h *ProjectHandler) Get(w http.ResponseWriter, r *http.Request) {
 		ID:        p.ID().String(),
 		Name:      p.Name(),
 		UserIDs:   userIDs,
-		UpdatedAt: p.UpdatedAt(),
+		UpdatedAt: p.UpdatedAt().Format(time.RFC3339),
 	}
 
 	w.Header().Set("Content-Type", "application/json")
