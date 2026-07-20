@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -16,7 +17,8 @@ import (
 )
 
 type mockRepository struct {
-	saveFunc func(ctx context.Context, p *domain.Project) error
+	saveFunc     func(ctx context.Context, p *domain.Project) error
+	findByIDFunc func(ctx context.Context, id uuid.UUID) (*domain.Project, error)
 }
 
 func (m *mockRepository) Save(ctx context.Context, p *domain.Project) error {
@@ -26,7 +28,10 @@ func (m *mockRepository) Save(ctx context.Context, p *domain.Project) error {
 	return nil
 }
 
-func (m *mockRepository) FindByID(context.Context, uuid.UUID) (*domain.Project, error) {
+func (m *mockRepository) FindByID(ctx context.Context, id uuid.UUID) (*domain.Project, error) {
+	if m.findByIDFunc != nil {
+		return m.findByIDFunc(ctx, id)
+	}
 	return nil, nil
 }
 
@@ -119,5 +124,44 @@ func TestProjectHandler_Create_ServiceError(t *testing.T) {
 
 	if !strings.Contains(rr.Body.String(), "failed to create domain project") {
 		t.Errorf("Expected validation error in body, got: %s", rr.Body.String())
+	}
+}
+
+func TestProjectHandler_Get_Success(t *testing.T) {
+	t.Parallel()
+
+	userID := uuid.New()
+	projectID := uuid.New()
+	p, err := domain.NewProject(projectID, []uuid.UUID{userID}, "Get Test Project", time.Now())
+	if err != nil {
+		t.Fatalf("Failed to create project: %v", err)
+	}
+
+	repo := &mockRepository{}
+	svc := application.NewService(repo)
+	handler := NewProjectHandler(svc)
+
+	ctx := context.WithValue(context.Background(), userIDKey, userID)
+	ctx = context.WithValue(ctx, projectContextKey, p)
+
+	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/projects/"+projectID.String(), nil)
+	rr := httptest.NewRecorder()
+
+	handler.Get(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("Expected status code %d, got %d, body: %s", http.StatusOK, rr.Code, rr.Body.String())
+	}
+
+	var resp JSONProjectResponse
+	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+
+	if resp.ID != projectID.String() {
+		t.Errorf("Expected project ID %q, got %q", projectID.String(), resp.ID)
+	}
+	if resp.Name != "Get Test Project" {
+		t.Errorf("Expected project name %q, got %q", "Get Test Project", resp.Name)
 	}
 }

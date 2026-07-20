@@ -41,6 +41,7 @@ type UseCase interface {
 	GetBinaryFile(ctx context.Context, fileID uuid.UUID) (*domainFile.BinaryFile, error)
 	ApplyFileChanges(ctx context.Context, req ApplyFileChangesRequest) (*domainFile.TypstFile, error)
 	DeleteFile(ctx context.Context, fileID uuid.UUID) error
+	ListFilesByProject(ctx context.Context, projectID uuid.UUID) ([]domainFile.File, error)
 }
 
 type Service struct {
@@ -128,4 +129,12 @@ func (s *Service) DeleteFile(ctx context.Context, fileID uuid.UUID) error {
 	}
 
 	return nil
+}
+
+func (s *Service) ListFilesByProject(ctx context.Context, projectID uuid.UUID) ([]domainFile.File, error) {
+	files, err := s.repo.FindByProjectID(ctx, projectID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find files by project: %w", err)
+	}
+	return files, nil
 }

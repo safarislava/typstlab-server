@@ -95,6 +95,26 @@ func TestService_Get_Success(t *testing.T) {
 	}
 }
 
+func TestService_Get_Error(t *testing.T) {
+	t.Parallel()
+
+	repo := &mockRepository{
+		findByTokenFunc: func(ctx context.Context, t tokenDomain.Token) (domain.Session, error) {
+			return domain.Session{}, domain.ErrSessionNotFound
+		},
+	}
+	svc := NewService(repo)
+
+	rt, err := tokenDomain.NewToken("123")
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+	_, err = svc.Get(context.Background(), rt)
+	if err == nil {
+		t.Fatalf("Expected error, got none")
+	}
+}
+
 func TestService_Invalidate_Success(t *testing.T) {
 	t.Parallel()
 
@@ -117,5 +137,25 @@ func TestService_Invalidate_Success(t *testing.T) {
 
 	if !deleted {
 		t.Error("Expected token to be deleted")
+	}
+}
+
+func TestService_Invalidate_Error(t *testing.T) {
+	t.Parallel()
+
+	repo := &mockRepository{
+		deleteFunc: func(ctx context.Context, t tokenDomain.Token) error {
+			return domain.ErrExpiredSession
+		},
+	}
+	svc := NewService(repo)
+
+	rt, err := tokenDomain.NewToken("123")
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+	err = svc.Invalidate(context.Background(), rt)
+	if err == nil {
+		t.Fatalf("Expected error, got none")
 	}
 }

@@ -67,3 +67,34 @@ func (h *ProjectHandler) Create(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusCreated)
 	_ = json.NewEncoder(w).Encode(jsonResp)
 }
+
+type JSONProjectResponse struct {
+	ID        string   `json:"id"`
+	Name      string   `json:"name"`
+	UserIDs   []string `json:"user_ids"`
+	UpdatedAt string   `json:"updated_at"`
+}
+
+func (h *ProjectHandler) Get(w http.ResponseWriter, r *http.Request) {
+	p, ok := ProjectFromContext(r.Context())
+	if !ok {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte("Project not found in context"))
+		return
+	}
+
+	userIDs := make([]string, len(p.UserIDs()))
+	for i, id := range p.UserIDs() {
+		userIDs[i] = id.String()
+	}
+
+	resp := JSONProjectResponse{
+		ID:        p.ID().String(),
+		Name:      p.Name(),
+		UserIDs:   userIDs,
+		UpdatedAt: p.UpdatedAt().Format(time.RFC3339),
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(resp)
+}

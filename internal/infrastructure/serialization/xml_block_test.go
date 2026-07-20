@@ -69,8 +69,7 @@ func TestSerializeDeserializeBlock_Roundtrip(t *testing.T) {
 		t.Fatalf("Failed to create block: %v", err)
 	}
 
-	xb := serializeBlock(original)
-	restored, err := deserializeBlock(&xb)
+	restored, err := deserializeBlock(new(serializeBlock(original)))
 	if err != nil {
 		t.Fatalf("deserializeBlock failed: %v", err)
 	}

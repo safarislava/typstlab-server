@@ -9,7 +9,6 @@ import (
 type Project struct {
 	id        uuid.UUID
 	userIDs   []uuid.UUID
-	fileIDs   []uuid.UUID
 	name      string
 	updatedAt time.Time
 }
@@ -40,40 +39,6 @@ func (p *Project) AddUser(userID uuid.UUID) error {
 	}
 	p.userIDs = append(p.userIDs, userID)
 	return nil
-}
-
-func (p *Project) FileIDs() []uuid.UUID {
-	return append([]uuid.UUID(nil), p.fileIDs...)
-}
-
-func (p *Project) HasFile(fileID uuid.UUID) bool {
-	for _, id := range p.fileIDs {
-		if id == fileID {
-			return true
-		}
-	}
-	return false
-}
-
-func (p *Project) AddFile(fileID uuid.UUID) error {
-	if fileID == uuid.Nil {
-		return ErrEmptyFileID
-	}
-	if p.HasFile(fileID) {
-		return nil
-	}
-	p.fileIDs = append(p.fileIDs, fileID)
-	return nil
-}
-
-func (p *Project) RemoveFile(fileID uuid.UUID) {
-	filtered := p.fileIDs[:0]
-	for _, id := range p.fileIDs {
-		if id != fileID {
-			filtered = append(filtered, id)
-		}
-	}
-	p.fileIDs = filtered
 }
 
 func (p *Project) Name() string {

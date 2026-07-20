@@ -73,8 +73,22 @@ func (r *mockRepository) FindBinaryFileByID(_ context.Context, id uuid.UUID) (*d
 	return f, nil
 }
 
-func (r *mockRepository) FindByProjectID(_ context.Context, _ uuid.UUID) ([]domainFile.File, error) {
-	return nil, nil
+func (r *mockRepository) FindByProjectID(_ context.Context, projectID uuid.UUID) ([]domainFile.File, error) {
+	if r.findErr != nil {
+		return nil, r.findErr
+	}
+	var res []domainFile.File
+	for _, f := range r.typstStore {
+		if f.ProjectID() == projectID {
+			res = append(res, f)
+		}
+	}
+	for _, f := range r.binaryStore {
+		if f.ProjectID() == projectID {
+			res = append(res, f)
+		}
+	}
+	return res, nil
 }
 
 func (r *mockRepository) DeleteFile(_ context.Context, id uuid.UUID) error {
@@ -424,5 +438,31 @@ func TestService_DeleteFile(t *testing.T) {
 				t.Fatalf("DeleteFile() error = %v, wantErr = %v", err, tt.wantErr)
 			}
 		})
+	}
+}
+
+func TestService_ListFilesByProject(t *testing.T) {
+	t.Parallel()
+	projectID := uuid.New()
+
+	repo := newMockRepository()
+	service, ctx := setupTest(repo, &mockMerger{})
+
+	tf, _ := domainFile.NewTypstFile(uuid.New(), projectID, "doc.typ", nil, nil, time.Now())
+	bf, _ := domainFile.NewBinaryFile(uuid.New(), projectID, "img.png", []byte{1, 2, 3}, time.Now())
+
+	otherTF, _ := domainFile.NewTypstFile(uuid.New(), uuid.New(), "other.typ", nil, nil, time.Now())
+
+	_ = repo.SaveTypstFile(ctx, tf)
+	_ = repo.SaveBinaryFile(ctx, bf)
+	_ = repo.SaveTypstFile(ctx, otherTF)
+
+	files, err := service.ListFilesByProject(ctx, projectID)
+	if err != nil {
+		t.Fatalf("ListFilesByProject() error = %v", err)
+	}
+
+	if len(files) != 2 {
+		t.Errorf("Expected 2 files, got %d", len(files))
 	}
 }

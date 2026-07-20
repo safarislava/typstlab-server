@@ -11,11 +11,13 @@ import (
 	"github.com/safarislava/typstlab-server/internal/domain/user"
 
 	appAuth "github.com/safarislava/typstlab-server/internal/application/auth"
+	fileApp "github.com/safarislava/typstlab-server/internal/application/file"
 	projectApp "github.com/safarislava/typstlab-server/internal/application/project"
 	sessionApp "github.com/safarislava/typstlab-server/internal/application/session"
 	userApp "github.com/safarislava/typstlab-server/internal/application/user"
 	"github.com/safarislava/typstlab-server/internal/infrastructure/auth"
 	"github.com/safarislava/typstlab-server/internal/infrastructure/config"
+	"github.com/safarislava/typstlab-server/internal/infrastructure/crdt"
 	projectHttp "github.com/safarislava/typstlab-server/internal/infrastructure/http"
 	projectDb "github.com/safarislava/typstlab-server/internal/infrastructure/persistence"
 )
@@ -36,6 +38,12 @@ func setupRouter(cfg *config.Config) *chi.Mux {
 	projectService := projectApp.NewService(projectRepo)
 	projectHandler := projectHttp.NewProjectHandler(projectService)
 
+	// Files components
+	fileRepo := projectDb.NewMemoryFileRepository()
+	yjsMerger := crdt.NewYjsMerger()
+	fileService := fileApp.NewService(fileRepo, yjsMerger)
+	fileHandler := projectHttp.NewFileHandler(fileService)
+
 	// Users / Auth components
 	userRepo := projectDb.NewMemoryUserRepository()
 	sessionRepo := projectDb.NewMemorySessionRepository()
@@ -47,7 +55,22 @@ func setupRouter(cfg *config.Config) *chi.Mux {
 	userHandler := projectHttp.NewUserHandler(userService)
 	authHandler := projectHttp.NewAuthHandler(authUseCase)
 	authMiddleware := projectHttp.NewAuthMiddleware(authUseCase)
+	accessMiddleware := projectHttp.NewAccessMiddleware(projectService, fileService)
 
+	registerRoutes(r, userHandler, authHandler, projectHandler, fileHandler, authMiddleware, accessMiddleware)
+
+	return r
+}
+
+func registerRoutes(
+	r *chi.Mux,
+	userHandler *projectHttp.UserHandler,
+	authHandler *projectHttp.AuthHandler,
+	projectHandler *projectHttp.ProjectHandler,
+	fileHandler *projectHttp.FileHandler,
+	authMiddleware *projectHttp.AuthMiddleware,
+	accessMiddleware *projectHttp.AccessMiddleware,
+) {
 	// Auth routes
 	r.Post("/register", userHandler.Register)
 	r.Post("/login", authHandler.Login)
@@ -61,12 +84,27 @@ func setupRouter(cfg *config.Config) *chi.Mux {
 		r.Use(projectHttp.RequireRole(user.RoleUser))
 
 		r.Post("/projects", projectHandler.Create)
+
+		r.Route("/projects/{projectID}", func(r chi.Router) {
+			r.Use(accessMiddleware.ProjectAccess)
+			r.Get("/", projectHandler.Get)
+			r.Post("/files/typst", fileHandler.CreateTypstFile)
+			r.Post("/files/binary", fileHandler.CreateBinaryFile)
+			r.Get("/files", fileHandler.ListProjectFiles)
+			r.With(accessMiddleware.FileAccess).Delete("/files/{fileID}", fileHandler.DeleteFile)
+		})
+
+		r.Route("/files", func(r chi.Router) {
+			r.Use(accessMiddleware.FileAccess)
+			r.Get("/typst/{fileID}", fileHandler.GetTypstFile)
+			r.Post("/typst/{fileID}/changes", fileHandler.ApplyFileChanges)
+			r.Get("/binary/{fileID}", fileHandler.GetBinaryFile)
+			r.Get("/binary/{fileID}/raw", fileHandler.GetBinaryFileRaw)
+		})
 	})
 
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("OK"))
 	})
-
-	return r
 }
