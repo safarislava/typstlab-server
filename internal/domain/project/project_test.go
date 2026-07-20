@@ -18,7 +18,7 @@ func TestNewProject_Success(t *testing.T) {
 	name := "My Project"
 	now := time.Now()
 
-	p, err := NewProject(id, userIDs, nil, name, now)
+	p, err := NewProject(id, userIDs, name, now)
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
@@ -38,7 +38,7 @@ func TestProject_Collaborators(t *testing.T) {
 
 	userID1 := uuid.New()
 	userID2 := uuid.New()
-	p, _ := NewProject(uuid.New(), []uuid.UUID{userID1}, nil, "Collab Proj", time.Now())
+	p, _ := NewProject(uuid.New(), []uuid.UUID{userID1}, "Collab Proj", time.Now())
 
 	if !p.HasUser(userID1) {
 		t.Error("Expected project to have initial owner")
@@ -83,7 +83,7 @@ func TestNewProject_ValidationErrors(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := NewProject(tt.id, tt.userIDs, nil, tt.projName, tt.updated)
+			_, err := NewProject(tt.id, tt.userIDs, tt.projName, tt.updated)
 			if !errors.Is(err, tt.wantErr) {
 				t.Errorf("NewProject() error = %v, want = %v", err, tt.wantErr)
 			}

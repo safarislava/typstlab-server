@@ -48,7 +48,7 @@ func TestMemoryProjectRepository(t *testing.T) {
 	}
 
 	// Create a valid project
-	p, err := projectDomain.NewProject(uuid.New(), []uuid.UUID{uuid.New()}, nil, "Alpha", time.Now())
+	p, err := projectDomain.NewProject(uuid.New(), []uuid.UUID{uuid.New()}, "Alpha", time.Now())
 	if err != nil {
 		t.Fatalf("Failed to create domain project: %v", err)
 	}
