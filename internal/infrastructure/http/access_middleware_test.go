@@ -18,9 +18,9 @@ import (
 )
 
 const (
-	errUnauthorized    = "unauthorized"
-	errProjectNotFound = "project not found"
-	errForbidden       = "forbidden"
+	errUnauthorized    = "Unauthorized"
+	errProjectNotFound = "Project not found"
+	errForbidden       = "Forbidden"
 	testProjectName    = "Test Project"
 	docTypstName       = "doc.typ"
 )
