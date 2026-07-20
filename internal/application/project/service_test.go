@@ -29,7 +29,7 @@ func (m *mockRepository) FindByID(ctx context.Context, id uuid.UUID) (*domain.Pr
 	if m.findByIDFunc != nil {
 		return m.findByIDFunc(ctx, id)
 	}
-	return nil, nil
+	return nil, errors.New("project not found")
 }
 
 func TestNewService(t *testing.T) {
@@ -126,16 +126,20 @@ func TestService_Create_SaveError(t *testing.T) {
 func TestService_FindByID_Success(t *testing.T) {
 	t.Parallel()
 
-	repo := &mockRepository{}
-	svc := NewService(repo)
-
 	p, err := domain.NewProject(uuid.New(), []uuid.UUID{uuid.New()}, "Test Project", time.Now())
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
-	if err = repo.Save(context.Background(), p); err != nil {
-		t.Fatalf("Unexpected error saving project: %v", err)
+
+	repo := &mockRepository{
+		findByIDFunc: func(ctx context.Context, id uuid.UUID) (*domain.Project, error) {
+			if id == p.ID() {
+				return p, nil
+			}
+			return nil, errors.New("project not found")
+		},
 	}
+	svc := NewService(repo)
 
 	tp, err := svc.Get(context.Background(), p.ID())
 	if err != nil {
