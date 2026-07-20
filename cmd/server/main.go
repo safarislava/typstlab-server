@@ -11,11 +11,13 @@ import (
 	"github.com/safarislava/typstlab-server/internal/domain/user"
 
 	appAuth "github.com/safarislava/typstlab-server/internal/application/auth"
+	fileApp "github.com/safarislava/typstlab-server/internal/application/file"
 	projectApp "github.com/safarislava/typstlab-server/internal/application/project"
 	sessionApp "github.com/safarislava/typstlab-server/internal/application/session"
 	userApp "github.com/safarislava/typstlab-server/internal/application/user"
 	"github.com/safarislava/typstlab-server/internal/infrastructure/auth"
 	"github.com/safarislava/typstlab-server/internal/infrastructure/config"
+	"github.com/safarislava/typstlab-server/internal/infrastructure/crdt"
 	projectHttp "github.com/safarislava/typstlab-server/internal/infrastructure/http"
 	projectDb "github.com/safarislava/typstlab-server/internal/infrastructure/persistence"
 )
@@ -35,6 +37,12 @@ func setupRouter(cfg *config.Config) *chi.Mux {
 	projectRepo := projectDb.NewMemoryProjectRepository()
 	projectService := projectApp.NewService(projectRepo)
 	projectHandler := projectHttp.NewProjectHandler(projectService)
+
+	// Files components
+	fileRepo := projectDb.NewMemoryFileRepository()
+	yjsMerger := crdt.NewYjsMerger()
+	fileService := fileApp.NewService(fileRepo, yjsMerger)
+	fileHandler := projectHttp.NewFileHandler(fileService, projectService)
 
 	// Users / Auth components
 	userRepo := projectDb.NewMemoryUserRepository()
@@ -61,6 +69,17 @@ func setupRouter(cfg *config.Config) *chi.Mux {
 		r.Use(projectHttp.RequireRole(user.RoleUser))
 
 		r.Post("/projects", projectHandler.Create)
+		r.Get("/projects/{projectID}", projectHandler.Get)
+
+		r.Post("/projects/{projectID}/files/typst", fileHandler.CreateTypstFile)
+		r.Post("/projects/{projectID}/files/binary", fileHandler.CreateBinaryFile)
+		r.Get("/projects/{projectID}/files", fileHandler.ListProjectFiles)
+		r.Delete("/projects/{projectID}/files/{fileID}", fileHandler.DeleteFile)
+
+		r.Get("/files/typst/{fileID}", fileHandler.GetTypstFile)
+		r.Post("/files/typst/{fileID}/changes", fileHandler.ApplyFileChanges)
+		r.Get("/files/binary/{fileID}", fileHandler.GetBinaryFile)
+		r.Get("/files/binary/{fileID}/raw", fileHandler.GetBinaryFileRaw)
 	})
 
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
