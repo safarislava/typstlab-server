@@ -8,109 +8,18 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-chi/chi/v5"
-	"github.com/google/uuid"
-
 	fileApp "github.com/safarislava/typstlab-server/internal/application/file"
-	projectApp "github.com/safarislava/typstlab-server/internal/application/project"
 	domainFile "github.com/safarislava/typstlab-server/internal/domain/file"
 )
 
 type FileHandler struct {
-	fileService    fileApp.UseCase
-	projectService projectApp.UseCase
+	fileService fileApp.UseCase
 }
 
-func NewFileHandler(fileService fileApp.UseCase, projectService projectApp.UseCase) *FileHandler {
+func NewFileHandler(fileService fileApp.UseCase) *FileHandler {
 	return &FileHandler{
-		fileService:    fileService,
-		projectService: projectService,
+		fileService: fileService,
 	}
-}
-
-func (h *FileHandler) checkProjectMembership(w http.ResponseWriter, r *http.Request, projectID uuid.UUID) bool {
-	p, err := h.projectService.Get(r.Context(), projectID)
-	if err != nil {
-		w.WriteHeader(http.StatusNotFound)
-		_, _ = w.Write([]byte("Project not found"))
-		return false
-	}
-
-	userID, ok := UserIDFromContext(r.Context())
-	if !ok {
-		w.WriteHeader(http.StatusUnauthorized)
-		return false
-	}
-
-	if !p.HasUser(userID) {
-		w.WriteHeader(http.StatusForbidden)
-		_, _ = w.Write([]byte("Forbidden"))
-		return false
-	}
-
-	return true
-}
-
-func (h *FileHandler) authorizeProjectAccess(w http.ResponseWriter, r *http.Request) (uuid.UUID, bool) {
-	projectIDStr := chi.URLParam(r, "projectID")
-	projectID, err := uuid.Parse(projectIDStr)
-	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		_, _ = w.Write([]byte("Invalid project ID"))
-		return uuid.Nil, false
-	}
-
-	if !h.checkProjectMembership(w, r, projectID) {
-		return uuid.Nil, false
-	}
-
-	return projectID, true
-}
-
-func (h *FileHandler) authorizeTypstFileAccess(w http.ResponseWriter, r *http.Request) (f *domainFile.TypstFile, ok bool) {
-	fileIDStr := chi.URLParam(r, "fileID")
-	fileID, err := uuid.Parse(fileIDStr)
-	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		_, _ = w.Write([]byte("Invalid file ID"))
-		return nil, false
-	}
-
-	f, err = h.fileService.GetTypstFile(r.Context(), fileID)
-	if err != nil {
-		w.WriteHeader(http.StatusNotFound)
-		_, _ = w.Write([]byte("Typst file not found"))
-		return nil, false
-	}
-
-	if !h.checkProjectMembership(w, r, f.ProjectID()) {
-		return nil, false
-	}
-
-	return f, true
-}
-
-func (h *FileHandler) authorizeBinaryFileAccess(w http.ResponseWriter, r *http.Request) (f *domainFile.BinaryFile, ok bool) {
-	fileIDStr := chi.URLParam(r, "fileID")
-	fileID, err := uuid.Parse(fileIDStr)
-	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		_, _ = w.Write([]byte("Invalid file ID"))
-		return nil, false
-	}
-
-	f, err = h.fileService.GetBinaryFile(r.Context(), fileID)
-	if err != nil {
-		w.WriteHeader(http.StatusNotFound)
-		_, _ = w.Write([]byte("Binary file not found"))
-		return nil, false
-	}
-
-	if !h.checkProjectMembership(w, r, f.ProjectID()) {
-		return nil, false
-	}
-
-	return f, true
 }
 
 func (h *FileHandler) writeJSONFileResponse(w http.ResponseWriter, f domainFile.File, status int) {
@@ -235,8 +144,10 @@ type jsonApplyFileChangesRequest struct {
 }
 
 func (h *FileHandler) CreateTypstFile(w http.ResponseWriter, r *http.Request) {
-	projectID, ok := h.authorizeProjectAccess(w, r)
+	p, ok := ProjectFromContext(r.Context())
 	if !ok {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte("Project not found in context"))
 		return
 	}
 
@@ -254,7 +165,7 @@ func (h *FileHandler) CreateTypstFile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	req := fileApp.CreateTypstFileRequest{
-		ProjectID: projectID,
+		ProjectID: p.ID(),
 		Name:      jsonReq.Name,
 	}
 
@@ -269,8 +180,10 @@ func (h *FileHandler) CreateTypstFile(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *FileHandler) CreateBinaryFile(w http.ResponseWriter, r *http.Request) {
-	projectID, ok := h.authorizeProjectAccess(w, r)
+	p, ok := ProjectFromContext(r.Context())
 	if !ok {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte("Project not found in context"))
 		return
 	}
 
@@ -288,7 +201,7 @@ func (h *FileHandler) CreateBinaryFile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	req := fileApp.CreateBinaryFileRequest{
-		ProjectID: projectID,
+		ProjectID: p.ID(),
 		Name:      name,
 		Content:   content,
 	}
@@ -304,12 +217,14 @@ func (h *FileHandler) CreateBinaryFile(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *FileHandler) ListProjectFiles(w http.ResponseWriter, r *http.Request) {
-	projectID, ok := h.authorizeProjectAccess(w, r)
+	p, ok := ProjectFromContext(r.Context())
 	if !ok {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte("Project not found in context"))
 		return
 	}
 
-	files, err := h.fileService.ListFilesByProject(r.Context(), projectID)
+	files, err := h.fileService.ListFilesByProject(r.Context(), p.ID())
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		_, _ = w.Write([]byte(err.Error()))
@@ -332,26 +247,45 @@ func (h *FileHandler) ListProjectFiles(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *FileHandler) GetTypstFile(w http.ResponseWriter, r *http.Request) {
-	f, ok := h.authorizeTypstFileAccess(w, r)
+	f, ok := FileFromContext(r.Context())
 	if !ok {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte("File not found in context"))
 		return
 	}
-	h.writeJSONTypstFileResponse(w, f, http.StatusOK)
+
+	tf, isTypst := f.(*domainFile.TypstFile)
+	if !isTypst {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte("Not a Typst file"))
+		return
+	}
+
+	h.writeJSONTypstFileResponse(w, tf, http.StatusOK)
 }
 
 func (h *FileHandler) GetBinaryFile(w http.ResponseWriter, r *http.Request) {
-	f, ok := h.authorizeBinaryFileAccess(w, r)
+	f, ok := FileFromContext(r.Context())
 	if !ok {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte("File not found in context"))
+		return
+	}
+
+	bf, isBinary := f.(*domainFile.BinaryFile)
+	if !isBinary {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte("Not a binary file"))
 		return
 	}
 
 	resp := JSONBinaryFileResponse{
-		ID:        f.ID().String(),
-		ProjectID: f.ProjectID().String(),
-		Name:      f.Name(),
-		Type:      string(f.Type()),
-		Size:      len(f.Content()),
-		UpdatedAt: f.UpdatedAt().Format(time.RFC3339),
+		ID:        bf.ID().String(),
+		ProjectID: bf.ProjectID().String(),
+		Name:      bf.Name(),
+		Type:      string(bf.Type()),
+		Size:      len(bf.Content()),
+		UpdatedAt: bf.UpdatedAt().Format(time.RFC3339),
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -359,19 +293,37 @@ func (h *FileHandler) GetBinaryFile(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *FileHandler) GetBinaryFileRaw(w http.ResponseWriter, r *http.Request) {
-	f, ok := h.authorizeBinaryFileAccess(w, r)
+	f, ok := FileFromContext(r.Context())
 	if !ok {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte("File not found in context"))
+		return
+	}
+
+	bf, isBinary := f.(*domainFile.BinaryFile)
+	if !isBinary {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte("Not a binary file"))
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/octet-stream")
-	w.Header().Set("Content-Disposition", "attachment; filename="+f.Name())
-	_, _ = w.Write(f.Content())
+	w.Header().Set("Content-Disposition", "attachment; filename="+bf.Name())
+	_, _ = w.Write(bf.Content())
 }
 
 func (h *FileHandler) ApplyFileChanges(w http.ResponseWriter, r *http.Request) {
-	f, ok := h.authorizeTypstFileAccess(w, r)
+	f, ok := FileFromContext(r.Context())
 	if !ok {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte("File not found in context"))
+		return
+	}
+
+	tf, isTypst := f.(*domainFile.TypstFile)
+	if !isTypst {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte("Not a Typst file"))
 		return
 	}
 
@@ -383,7 +335,7 @@ func (h *FileHandler) ApplyFileChanges(w http.ResponseWriter, r *http.Request) {
 	}
 
 	req := fileApp.ApplyFileChangesRequest{
-		FileID: f.ID(),
+		FileID: tf.ID(),
 		Delta:  jsonReq.Delta,
 	}
 
@@ -398,39 +350,23 @@ func (h *FileHandler) ApplyFileChanges(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *FileHandler) DeleteFile(w http.ResponseWriter, r *http.Request) {
-	projectID, ok := h.authorizeProjectAccess(w, r)
-	if !ok {
+	p, okP := ProjectFromContext(r.Context())
+	f, okF := FileFromContext(r.Context())
+	if !okP || !okF {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte("Context requirements not met"))
 		return
 	}
 
-	fileIDStr := chi.URLParam(r, "fileID")
-	fileID, err := uuid.Parse(fileIDStr)
-	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		_, _ = w.Write([]byte("Invalid file ID"))
-		return
-	}
-
-	var fileProjectID uuid.UUID
-	if tf, errT := h.fileService.GetTypstFile(r.Context(), fileID); errT == nil {
-		fileProjectID = tf.ProjectID()
-	} else if bf, errB := h.fileService.GetBinaryFile(r.Context(), fileID); errB == nil {
-		fileProjectID = bf.ProjectID()
-	} else {
-		w.WriteHeader(http.StatusNotFound)
-		_, _ = w.Write([]byte("File not found"))
-		return
-	}
-
-	if fileProjectID != projectID {
+	if f.ProjectID() != p.ID() {
 		w.WriteHeader(http.StatusBadRequest)
 		_, _ = w.Write([]byte("File does not belong to the specified project"))
 		return
 	}
 
-	if errDelete := h.fileService.DeleteFile(r.Context(), fileID); errDelete != nil {
+	if err := h.fileService.DeleteFile(r.Context(), f.ID()); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		_, _ = w.Write([]byte("Failed to delete file: " + errDelete.Error()))
+		_, _ = w.Write([]byte("Failed to delete file: " + err.Error()))
 		return
 	}
 

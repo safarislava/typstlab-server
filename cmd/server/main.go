@@ -42,7 +42,7 @@ func setupRouter(cfg *config.Config) *chi.Mux {
 	fileRepo := projectDb.NewMemoryFileRepository()
 	yjsMerger := crdt.NewYjsMerger()
 	fileService := fileApp.NewService(fileRepo, yjsMerger)
-	fileHandler := projectHttp.NewFileHandler(fileService, projectService)
+	fileHandler := projectHttp.NewFileHandler(fileService)
 
 	// Users / Auth components
 	userRepo := projectDb.NewMemoryUserRepository()
@@ -55,7 +55,22 @@ func setupRouter(cfg *config.Config) *chi.Mux {
 	userHandler := projectHttp.NewUserHandler(userService)
 	authHandler := projectHttp.NewAuthHandler(authUseCase)
 	authMiddleware := projectHttp.NewAuthMiddleware(authUseCase)
+	accessMiddleware := projectHttp.NewAccessMiddleware(projectService, fileService)
 
+	registerRoutes(r, userHandler, authHandler, projectHandler, fileHandler, authMiddleware, accessMiddleware)
+
+	return r
+}
+
+func registerRoutes(
+	r *chi.Mux,
+	userHandler *projectHttp.UserHandler,
+	authHandler *projectHttp.AuthHandler,
+	projectHandler *projectHttp.ProjectHandler,
+	fileHandler *projectHttp.FileHandler,
+	authMiddleware *projectHttp.AuthMiddleware,
+	accessMiddleware *projectHttp.AccessMiddleware,
+) {
 	// Auth routes
 	r.Post("/register", userHandler.Register)
 	r.Post("/login", authHandler.Login)
@@ -69,23 +84,27 @@ func setupRouter(cfg *config.Config) *chi.Mux {
 		r.Use(projectHttp.RequireRole(user.RoleUser))
 
 		r.Post("/projects", projectHandler.Create)
-		r.Get("/projects/{projectID}", projectHandler.Get)
 
-		r.Post("/projects/{projectID}/files/typst", fileHandler.CreateTypstFile)
-		r.Post("/projects/{projectID}/files/binary", fileHandler.CreateBinaryFile)
-		r.Get("/projects/{projectID}/files", fileHandler.ListProjectFiles)
-		r.Delete("/projects/{projectID}/files/{fileID}", fileHandler.DeleteFile)
+		r.Route("/projects/{projectID}", func(r chi.Router) {
+			r.Use(accessMiddleware.ProjectAccess)
+			r.Get("/", projectHandler.Get)
+			r.Post("/files/typst", fileHandler.CreateTypstFile)
+			r.Post("/files/binary", fileHandler.CreateBinaryFile)
+			r.Get("/files", fileHandler.ListProjectFiles)
+			r.With(accessMiddleware.FileAccess).Delete("/files/{fileID}", fileHandler.DeleteFile)
+		})
 
-		r.Get("/files/typst/{fileID}", fileHandler.GetTypstFile)
-		r.Post("/files/typst/{fileID}/changes", fileHandler.ApplyFileChanges)
-		r.Get("/files/binary/{fileID}", fileHandler.GetBinaryFile)
-		r.Get("/files/binary/{fileID}/raw", fileHandler.GetBinaryFileRaw)
+		r.Route("/files", func(r chi.Router) {
+			r.Use(accessMiddleware.FileAccess)
+			r.Get("/typst/{fileID}", fileHandler.GetTypstFile)
+			r.Post("/typst/{fileID}/changes", fileHandler.ApplyFileChanges)
+			r.Get("/binary/{fileID}", fileHandler.GetBinaryFile)
+			r.Get("/binary/{fileID}/raw", fileHandler.GetBinaryFileRaw)
+		})
 	})
 
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("OK"))
 	})
-
-	return r
 }

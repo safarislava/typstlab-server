@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
 	application "github.com/safarislava/typstlab-server/internal/application/project"
@@ -138,21 +137,12 @@ func TestProjectHandler_Get_Success(t *testing.T) {
 		t.Fatalf("Failed to create project: %v", err)
 	}
 
-	repo := &mockRepository{
-		findByIDFunc: func(ctx context.Context, id uuid.UUID) (*domain.Project, error) {
-			if id == projectID {
-				return p, nil
-			}
-			return nil, nil
-		},
-	}
+	repo := &mockRepository{}
 	svc := application.NewService(repo)
 	handler := NewProjectHandler(svc)
 
 	ctx := context.WithValue(context.Background(), userIDKey, userID)
-	rctx := chi.NewRouteContext()
-	rctx.URLParams.Add("projectID", projectID.String())
-	ctx = context.WithValue(ctx, chi.RouteCtxKey, rctx)
+	ctx = context.WithValue(ctx, projectContextKey, p)
 
 	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/projects/"+projectID.String(), nil)
 	rr := httptest.NewRecorder()

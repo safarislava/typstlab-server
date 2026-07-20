@@ -10,49 +10,24 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
 	fileApp "github.com/safarislava/typstlab-server/internal/application/file"
-	projectApp "github.com/safarislava/typstlab-server/internal/application/project"
 	domainFile "github.com/safarislava/typstlab-server/internal/domain/file"
 	domainProject "github.com/safarislava/typstlab-server/internal/domain/project"
 )
 
-const (
-	docTyp         = "doc.typ"
-	paramProjectID = "projectID"
-	paramFileID    = "fileID"
-)
+const docTyp = "doc.typ"
 
-func testContext(userID uuid.UUID, params map[string]string) context.Context {
+func testContext(userID uuid.UUID, project *domainProject.Project, file domainFile.File) context.Context {
 	ctx := context.WithValue(context.Background(), userIDKey, userID)
-	rctx := chi.NewRouteContext()
-	for k, v := range params {
-		rctx.URLParams.Add(k, v)
+	if project != nil {
+		ctx = context.WithValue(ctx, projectContextKey, project)
 	}
-	return context.WithValue(ctx, chi.RouteCtxKey, rctx)
-}
-
-type mockProjectUseCase struct {
-	projectApp.UseCase
-	getFunc func(ctx context.Context, projectID uuid.UUID) (*domainProject.Project, error)
-}
-
-func (m *mockProjectUseCase) Get(ctx context.Context, projectID uuid.UUID) (*domainProject.Project, error) {
-	if m.getFunc != nil {
-		return m.getFunc(ctx, projectID)
+	if file != nil {
+		ctx = context.WithValue(ctx, fileContextKey, file)
 	}
-	return nil, nil
-}
-
-func setupProjectMock(userID, projectID uuid.UUID) *mockProjectUseCase {
-	p, _ := domainProject.NewProject(projectID, []uuid.UUID{userID}, "Test Project", time.Now())
-	return &mockProjectUseCase{
-		getFunc: func(ctx context.Context, id uuid.UUID) (*domainProject.Project, error) {
-			return p, nil
-		},
-	}
+	return ctx
 }
 
 func assertFileCreation(t *testing.T, rr *httptest.ResponseRecorder, expectedFileID uuid.UUID) {
@@ -136,7 +111,7 @@ func TestFileHandler_CreateTypstFile(t *testing.T) {
 
 	userID := uuid.New()
 	projectID := uuid.New()
-	mockProj := setupProjectMock(userID, projectID)
+	p, _ := domainProject.NewProject(projectID, []uuid.UUID{userID}, "Test Project", time.Now())
 
 	fileID := uuid.New()
 	tf, _ := domainFile.NewTypstFile(fileID, projectID, docTyp, nil, nil, time.Now())
@@ -150,8 +125,8 @@ func TestFileHandler_CreateTypstFile(t *testing.T) {
 		},
 	}
 
-	handler := NewFileHandler(mockFile, mockProj)
-	ctx := testContext(userID, map[string]string{paramProjectID: projectID.String()})
+	handler := NewFileHandler(mockFile)
+	ctx := testContext(userID, p, nil)
 
 	reqBody, _ := json.Marshal(jsonCreateTypstFileRequest{Name: docTyp})
 	req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/projects/"+projectID.String()+"/files/typst", bytes.NewBuffer(reqBody))
@@ -166,7 +141,7 @@ func TestFileHandler_CreateBinaryFile_Multipart(t *testing.T) {
 
 	userID := uuid.New()
 	projectID := uuid.New()
-	mockProj := setupProjectMock(userID, projectID)
+	p, _ := domainProject.NewProject(projectID, []uuid.UUID{userID}, "Test Project", time.Now())
 
 	fileID := uuid.New()
 	bf, _ := domainFile.NewBinaryFile(fileID, projectID, "img.png", []byte{1, 2, 3}, time.Now())
@@ -180,8 +155,8 @@ func TestFileHandler_CreateBinaryFile_Multipart(t *testing.T) {
 		},
 	}
 
-	handler := NewFileHandler(mockFile, mockProj)
-	ctx := testContext(userID, map[string]string{paramProjectID: projectID.String()})
+	handler := NewFileHandler(mockFile)
+	ctx := testContext(userID, p, nil)
 
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
@@ -203,7 +178,7 @@ func TestFileHandler_ListProjectFiles(t *testing.T) {
 
 	userID := uuid.New()
 	projectID := uuid.New()
-	mockProj := setupProjectMock(userID, projectID)
+	p, _ := domainProject.NewProject(projectID, []uuid.UUID{userID}, "Test Project", time.Now())
 
 	tf, _ := domainFile.NewTypstFile(uuid.New(), projectID, docTyp, nil, nil, time.Now())
 	mockFile := &mockFileUseCase{
@@ -212,8 +187,8 @@ func TestFileHandler_ListProjectFiles(t *testing.T) {
 		},
 	}
 
-	handler := NewFileHandler(mockFile, mockProj)
-	ctx := testContext(userID, map[string]string{paramProjectID: projectID.String()})
+	handler := NewFileHandler(mockFile)
+	ctx := testContext(userID, p, nil)
 
 	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/projects/"+projectID.String()+"/files", nil)
 	rr := httptest.NewRecorder()
@@ -238,17 +213,12 @@ func TestFileHandler_GetTypstFile(t *testing.T) {
 	userID := uuid.New()
 	projectID := uuid.New()
 	fileID := uuid.New()
-	mockProj := setupProjectMock(userID, projectID)
 
 	tf, _ := domainFile.NewTypstFile(fileID, projectID, docTyp, []byte("state"), nil, time.Now())
-	mockFile := &mockFileUseCase{
-		getTypstFileFunc: func(ctx context.Context, fid uuid.UUID) (*domainFile.TypstFile, error) {
-			return tf, nil
-		},
-	}
+	mockFile := &mockFileUseCase{}
 
-	handler := NewFileHandler(mockFile, mockProj)
-	ctx := testContext(userID, map[string]string{paramFileID: fileID.String()})
+	handler := NewFileHandler(mockFile)
+	ctx := testContext(userID, nil, tf)
 
 	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/files/typst/"+fileID.String(), nil)
 	rr := httptest.NewRecorder()
@@ -273,17 +243,12 @@ func TestFileHandler_GetBinaryFileRaw(t *testing.T) {
 	userID := uuid.New()
 	projectID := uuid.New()
 	fileID := uuid.New()
-	mockProj := setupProjectMock(userID, projectID)
 
 	bf, _ := domainFile.NewBinaryFile(fileID, projectID, "image.png", []byte{4, 5, 6}, time.Now())
-	mockFile := &mockFileUseCase{
-		getBinaryFileFunc: func(ctx context.Context, fid uuid.UUID) (*domainFile.BinaryFile, error) {
-			return bf, nil
-		},
-	}
+	mockFile := &mockFileUseCase{}
 
-	handler := NewFileHandler(mockFile, mockProj)
-	ctx := testContext(userID, map[string]string{paramFileID: fileID.String()})
+	handler := NewFileHandler(mockFile)
+	ctx := testContext(userID, nil, bf)
 
 	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/files/binary/"+fileID.String()+"/raw", nil)
 	rr := httptest.NewRecorder()
@@ -305,15 +270,11 @@ func TestFileHandler_ApplyFileChanges(t *testing.T) {
 	userID := uuid.New()
 	projectID := uuid.New()
 	fileID := uuid.New()
-	mockProj := setupProjectMock(userID, projectID)
 
 	tf, _ := domainFile.NewTypstFile(fileID, projectID, docTyp, []byte("old-state"), nil, time.Now())
 	updatedTf, _ := domainFile.NewTypstFile(fileID, projectID, docTyp, []byte("updated-state"), nil, time.Now())
 
 	mockFile := &mockFileUseCase{
-		getTypstFileFunc: func(ctx context.Context, fid uuid.UUID) (*domainFile.TypstFile, error) {
-			return tf, nil
-		},
 		applyFileChangesFunc: func(ctx context.Context, req fileApp.ApplyFileChangesRequest) (*domainFile.TypstFile, error) {
 			if req.FileID == fileID && string(req.Delta) == "changes" {
 				return updatedTf, nil
@@ -322,8 +283,8 @@ func TestFileHandler_ApplyFileChanges(t *testing.T) {
 		},
 	}
 
-	handler := NewFileHandler(mockFile, mockProj)
-	ctx := testContext(userID, map[string]string{paramFileID: fileID.String()})
+	handler := NewFileHandler(mockFile)
+	ctx := testContext(userID, nil, tf)
 
 	reqBody, _ := json.Marshal(jsonApplyFileChangesRequest{Delta: []byte("changes")})
 	req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/files/typst/"+fileID.String()+"/changes", bytes.NewBuffer(reqBody))
@@ -349,15 +310,12 @@ func TestFileHandler_DeleteFile(t *testing.T) {
 	userID := uuid.New()
 	projectID := uuid.New()
 	fileID := uuid.New()
-	mockProj := setupProjectMock(userID, projectID)
+	p, _ := domainProject.NewProject(projectID, []uuid.UUID{userID}, "Test Project", time.Now())
 
 	tf, _ := domainFile.NewTypstFile(fileID, projectID, docTyp, nil, nil, time.Now())
 
 	deletedFileCalled := false
 	mockFile := &mockFileUseCase{
-		getTypstFileFunc: func(ctx context.Context, fid uuid.UUID) (*domainFile.TypstFile, error) {
-			return tf, nil
-		},
 		deleteFileFunc: func(ctx context.Context, fid uuid.UUID) error {
 			if fid == fileID {
 				deletedFileCalled = true
@@ -366,8 +324,8 @@ func TestFileHandler_DeleteFile(t *testing.T) {
 		},
 	}
 
-	handler := NewFileHandler(mockFile, mockProj)
-	ctx := testContext(userID, map[string]string{paramProjectID: projectID.String(), paramFileID: fileID.String()})
+	handler := NewFileHandler(mockFile)
+	ctx := testContext(userID, p, tf)
 
 	req := httptest.NewRequestWithContext(ctx, http.MethodDelete, "/projects/"+projectID.String()+"/files/"+fileID.String(), nil)
 	rr := httptest.NewRecorder()

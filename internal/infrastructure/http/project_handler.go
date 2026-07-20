@@ -5,9 +5,6 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/go-chi/chi/v5"
-	"github.com/google/uuid"
-
 	application "github.com/safarislava/typstlab-server/internal/application/project"
 )
 
@@ -79,31 +76,10 @@ type JSONProjectResponse struct {
 }
 
 func (h *ProjectHandler) Get(w http.ResponseWriter, r *http.Request) {
-	projectIDStr := chi.URLParam(r, "projectID")
-	projectID, err := uuid.Parse(projectIDStr)
-	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		_, _ = w.Write([]byte("Invalid project ID"))
-		return
-	}
-
-	userID, ok := UserIDFromContext(r.Context())
+	p, ok := ProjectFromContext(r.Context())
 	if !ok {
-		w.WriteHeader(http.StatusUnauthorized)
-		_, _ = w.Write([]byte("Unauthorized"))
-		return
-	}
-
-	p, err := h.service.Get(r.Context(), projectID)
-	if err != nil {
-		w.WriteHeader(http.StatusNotFound)
-		_, _ = w.Write([]byte("Project not found"))
-		return
-	}
-
-	if !p.HasUser(userID) {
-		w.WriteHeader(http.StatusForbidden)
-		_, _ = w.Write([]byte("Forbidden"))
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte("Project not found in context"))
 		return
 	}
 
