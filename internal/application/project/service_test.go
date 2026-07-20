@@ -3,8 +3,10 @@ package project
 import (
 	"context"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -118,5 +120,41 @@ func TestService_Create_SaveError(t *testing.T) {
 
 	if !errors.Is(err, expectedErr) && !strings.Contains(err.Error(), "failed to save project") {
 		t.Errorf("Expected error containing 'failed to save project', got: %v", err)
+	}
+}
+
+func TestService_FindByID_Success(t *testing.T) {
+	t.Parallel()
+
+	repo := &mockRepository{}
+	svc := NewService(repo)
+
+	p, err := domain.NewProject(uuid.New(), []uuid.UUID{uuid.New()}, "Test Project", time.Now())
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+	if err = repo.Save(context.Background(), p); err != nil {
+		t.Fatalf("Unexpected error saving project: %v", err)
+	}
+
+	tp, err := svc.Get(context.Background(), p.ID())
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+
+	if !reflect.DeepEqual(p, tp) {
+		t.Fatalf("Expected project %v, got %v", p, tp)
+	}
+}
+
+func TestService_FindByID_NotFound(t *testing.T) {
+	t.Parallel()
+
+	repo := &mockRepository{}
+	svc := NewService(repo)
+
+	_, err := svc.Get(context.Background(), uuid.New())
+	if err == nil {
+		t.Fatal("Expected error, got nil")
 	}
 }
