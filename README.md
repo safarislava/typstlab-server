@@ -31,10 +31,12 @@ The backend is designed to be lightweight, high-performance, and secure, focusin
 
 ## 🛠 Tech Stack
 
-- **Language**: [Go (Golang)](https://go.dev/) (1.22+)
+- **Language**: [Go (Golang)](https://go.dev/) (1.26+)
 - **Database**: ???
-- **Web Framework / Router**: Lightweight router Chi
-- **CRDT Support**: Yjs-compatible update storage and merging logic in Go
+- **Web Framework / Router**: [go-chi/chi](https://github.com/go-chi/chi) (v5)
+- **CRDT Support**: Yjs-compatible storage and update merging using [ygo](https://github.com/reearth/ygo)
+- **Authentication**: JWT (JSON Web Tokens) using [golang-jwt/jwt](https://github.com/golang-jwt/jwt) (v5) and password hashing with [crypto/bcrypt](`golang.org/x/crypto/bcrypt`)
+- **Configuration**: JSON-based configs (`configs/config.json`)
 
 ---
 
