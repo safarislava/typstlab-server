@@ -618,6 +618,7 @@ components:
 
     TypstFileResponse:
       type: object
+      description: Formal Typst file format with CRDT state vector and structured markup blocks.
       properties:
         id:
           type: string
