@@ -276,6 +276,19 @@ paths:
   /projects/{projectID}/sync:
     post:
       summary: Synchronize client files manifest with server
+      description: |
+        Performs a two-step handshake for offline file synchronization between client and server.
+        
+        **Workflow:**
+        1. **Client Manifest:** Client sends all local files with client-generated UUIDs and Yjs `yjs_state_vector` (for Typst files).
+        2. **Server Instructions:** Server compares manifest against database, computes missing CRDT deltas, resolves name conflicts, and returns an ordered list of instructions (`download`, `upload`, `rename`, `delete`, `apply_changes`).
+        
+        **Instruction Actions (`action`):**
+        - `download`: Client should download new file from server (`GET /files/...`).
+        - `upload`: Client should upload offline created file to server (`POST /projects/{projectID}/files`).
+        - `rename`: Client should rename local file to resolve name conflict or apply server name.
+        - `delete`: Client should delete local file (marked deleted on server).
+        - `apply_changes`: Client should apply Base64 CRDT `delta` update to its Yjs document.
       tags:
         - Sync
       security:
@@ -605,6 +618,7 @@ components:
 
     TypstFileResponse:
       type: object
+      description: Formal Typst file format with CRDT state vector and structured markup blocks.
       properties:
         id:
           type: string
