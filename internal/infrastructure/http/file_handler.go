@@ -185,7 +185,7 @@ func (h *FileHandler) UploadFile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var f domainFile.File
-	if strings.HasSuffix(name, ".typ") {
+	if strings.HasSuffix(name, ".typxml") {
 		state, blocks, errInit := h.initTypstFile(content)
 		if errInit != nil {
 			w.WriteHeader(http.StatusInternalServerError)

@@ -1,4 +1,4 @@
-# Спецификация формата typstxml (Typst File Format Specification)
+# Спецификация формата typxml (Typst File Format Specification)
 
 Настоящий документ содержит формальное описание структуры данных, формата сериализации (XML/JSON), представления CRDT-состояния и правил валидации файлов `Typst` (`.typ`) в платформе TypstLab.
 
@@ -12,7 +12,7 @@
 
 ---
 
-## 2. Формат сериализации XML (`typst_file.xml`)
+## 2. Формат сериализации XML (`typst_file.typxml`)
 
 При сохранении контента файла на сервере или при десериализации исходников исходный текст преобразуется в XML-структуру.
 
@@ -54,7 +54,7 @@
 {
   "id": "c30980ef-51eb-47eb-ba05-89416a5db202",
   "project_id": "7a359cf9-e932-473d-9d41-52643a5323bb",
-  "name": "document.typ",
+  "name": "document.typxml",
   "type": "typst",
   "state": "AQEBCwAAAQ==",
   "blocks": [
