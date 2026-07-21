@@ -160,3 +160,62 @@ func TestSyncHandler_Sync_InvalidFileID(t *testing.T) {
 		t.Errorf("Expected status code %d, got %d", http.StatusBadRequest, rr.Code)
 	}
 }
+
+func TestSyncHandler_Sync_FullIntegration(t *testing.T) {
+	t.Parallel()
+
+	projectID := uuid.New()
+	p, err := domainProject.NewProject(projectID, []uuid.UUID{uuid.New()}, "Integration Project", time.Now())
+	if err != nil {
+		t.Fatalf("Failed to create project: %v", err)
+	}
+
+	serverFileID := uuid.New()
+	deletedFileID := uuid.New()
+	serverFile, _ := domainFile.NewTypstFile(serverFileID, projectID, "main.typ", nil, nil, time.Now())
+
+	repo := &mockSyncRepo{files: []domainFile.File{serverFile}}
+	syncSvc := syncApp.NewService(repo)
+	handler := NewSyncHandler(syncSvc)
+
+	offlineID := uuid.New()
+	jsonReq := JSONSyncRequest{
+		Files: []JSONSyncFileRequest{
+			{
+				ID:   offlineID.String(),
+				Name: "offline_created.typ",
+				Type: string(domainFile.TypeTypst),
+			},
+			{
+				ID:   deletedFileID.String(),
+				Name: "deleted.typ",
+				Type: string(domainFile.TypeTypst),
+			},
+		},
+	}
+	body, _ := json.Marshal(jsonReq)
+
+	ctx := context.WithValue(context.Background(), projectContextKey, p)
+	req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/projects/"+projectID.String()+"/sync", bytes.NewBuffer(body))
+	rr := httptest.NewRecorder()
+
+	handler.Sync(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("Expected status 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	var resp JSONSyncResponse
+	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+
+	actions := make(map[string]bool)
+	for _, inst := range resp.Instructions {
+		actions[inst.Action] = true
+	}
+
+	if !actions["upload"] || !actions["download"] {
+		t.Errorf("Expected upload and download actions in response, got instructions: %+v", resp.Instructions)
+	}
+}
