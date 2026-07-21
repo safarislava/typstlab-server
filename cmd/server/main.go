@@ -88,8 +88,7 @@ func registerRoutes(
 		r.Route("/projects/{projectID}", func(r chi.Router) {
 			r.Use(accessMiddleware.ProjectAccess)
 			r.Get("/", projectHandler.Get)
-			r.Post("/files/typst", fileHandler.CreateTypstFile)
-			r.Post("/files/binary", fileHandler.CreateBinaryFile)
+			r.Post("/files", fileHandler.UploadFile)
 			r.Get("/files", fileHandler.ListProjectFiles)
 			r.With(accessMiddleware.FileAccess).Delete("/files/{fileID}", fileHandler.DeleteFile)
 		})

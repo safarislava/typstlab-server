@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -48,8 +49,8 @@ func assertFileCreation(t *testing.T, rr *httptest.ResponseRecorder, expectedFil
 
 type mockFileUseCase struct {
 	fileApp.UseCase
-	createTypstFileFunc    func(ctx context.Context, req fileApp.CreateTypstFileRequest) (*domainFile.TypstFile, error)
-	createBinaryFileFunc   func(ctx context.Context, req fileApp.CreateBinaryFileRequest) (*domainFile.BinaryFile, error)
+	uploadTypstFileFunc    func(ctx context.Context, req *fileApp.UploadTypstFileRequest) (*domainFile.TypstFile, error)
+	uploadBinaryFileFunc   func(ctx context.Context, req *fileApp.UploadBinaryFileRequest) (*domainFile.BinaryFile, error)
 	getTypstFileFunc       func(ctx context.Context, fileID uuid.UUID) (*domainFile.TypstFile, error)
 	getBinaryFileFunc      func(ctx context.Context, fileID uuid.UUID) (*domainFile.BinaryFile, error)
 	listFilesByProjectFunc func(ctx context.Context, projectID uuid.UUID) ([]domainFile.File, error)
@@ -57,16 +58,16 @@ type mockFileUseCase struct {
 	deleteFileFunc         func(ctx context.Context, fileID uuid.UUID) error
 }
 
-func (m *mockFileUseCase) CreateTypstFile(ctx context.Context, req fileApp.CreateTypstFileRequest) (*domainFile.TypstFile, error) {
-	if m.createTypstFileFunc != nil {
-		return m.createTypstFileFunc(ctx, req)
+func (m *mockFileUseCase) UploadTypstFile(ctx context.Context, req *fileApp.UploadTypstFileRequest) (*domainFile.TypstFile, error) {
+	if m.uploadTypstFileFunc != nil {
+		return m.uploadTypstFileFunc(ctx, req)
 	}
 	return nil, nil
 }
 
-func (m *mockFileUseCase) CreateBinaryFile(ctx context.Context, req fileApp.CreateBinaryFileRequest) (*domainFile.BinaryFile, error) {
-	if m.createBinaryFileFunc != nil {
-		return m.createBinaryFileFunc(ctx, req)
+func (m *mockFileUseCase) UploadBinaryFile(ctx context.Context, req *fileApp.UploadBinaryFileRequest) (*domainFile.BinaryFile, error) {
+	if m.uploadBinaryFileFunc != nil {
+		return m.uploadBinaryFileFunc(ctx, req)
 	}
 	return nil, nil
 }
@@ -106,7 +107,7 @@ func (m *mockFileUseCase) DeleteFile(ctx context.Context, fileID uuid.UUID) erro
 	return nil
 }
 
-func TestFileHandler_CreateTypstFile(t *testing.T) {
+func TestFileHandler_UploadTypstFile(t *testing.T) {
 	t.Parallel()
 
 	userID := uuid.New()
@@ -117,8 +118,8 @@ func TestFileHandler_CreateTypstFile(t *testing.T) {
 	tf, _ := domainFile.NewTypstFile(fileID, projectID, docTyp, nil, nil, time.Now())
 
 	mockFile := &mockFileUseCase{
-		createTypstFileFunc: func(ctx context.Context, req fileApp.CreateTypstFileRequest) (*domainFile.TypstFile, error) {
-			if req.ProjectID == projectID && req.Name == docTyp {
+		uploadTypstFileFunc: func(ctx context.Context, req *fileApp.UploadTypstFileRequest) (*domainFile.TypstFile, error) {
+			if req.ID == fileID && req.ProjectID == projectID && req.Name == docTyp {
 				return tf, nil
 			}
 			return nil, nil
@@ -128,15 +129,58 @@ func TestFileHandler_CreateTypstFile(t *testing.T) {
 	handler := NewFileHandler(mockFile)
 	ctx := testContext(userID, p, nil)
 
-	reqBody, _ := json.Marshal(jsonCreateTypstFileRequest{Name: docTyp})
-	req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/projects/"+projectID.String()+"/files/typst", bytes.NewBuffer(reqBody))
+	reqBody, _ := json.Marshal(jsonUploadFileRequest{
+		ID:   fileID.String(),
+		Name: docTyp,
+	})
+	req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/projects/"+projectID.String()+"/files", bytes.NewBuffer(reqBody))
 	rr := httptest.NewRecorder()
 
-	handler.CreateTypstFile(rr, req)
+	handler.UploadFile(rr, req)
 	assertFileCreation(t, rr, fileID)
 }
 
-func TestFileHandler_CreateBinaryFile_Multipart(t *testing.T) {
+func TestFileHandler_UploadTypstFile_WithXML(t *testing.T) {
+	t.Parallel()
+
+	userID := uuid.New()
+	projectID := uuid.New()
+	p, _ := domainProject.NewProject(projectID, []uuid.UUID{userID}, "Test Project", time.Now())
+
+	fileID := uuid.New()
+	blockID := uuid.New()
+	tf, _ := domainFile.NewTypstFile(fileID, projectID, docTyp, []byte("state-bytes"), nil, time.Now())
+
+	// valid XML format matching internal/infrastructure/serialization/xml_block.go
+	xmlData := fmt.Sprintf(`<file state="c3RhdGUtYnl0ZXM="><block id=%q name="Intro">Content</block></file>`, blockID.String())
+
+	mockFile := &mockFileUseCase{
+		uploadTypstFileFunc: func(ctx context.Context, req *fileApp.UploadTypstFileRequest) (*domainFile.TypstFile, error) {
+			if req.ID == fileID && req.ProjectID == projectID && req.Name == docTyp {
+				if string(req.State) == "state-bytes" && len(req.Blocks) == 1 && req.Blocks[0].ID() == blockID {
+					return tf, nil
+				}
+			}
+			return nil, nil
+		},
+	}
+
+	handler := NewFileHandler(mockFile)
+	ctx := testContext(userID, p, nil)
+
+	reqBody, _ := json.Marshal(jsonUploadFileRequest{
+		ID:      fileID.String(),
+		Name:    docTyp,
+		Content: []byte(xmlData),
+	})
+	req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/projects/"+projectID.String()+"/files", bytes.NewBuffer(reqBody))
+	rr := httptest.NewRecorder()
+
+	handler.UploadFile(rr, req)
+	assertFileCreation(t, rr, fileID)
+}
+
+func TestFileHandler_UploadBinaryFile_Multipart(t *testing.T) {
 	t.Parallel()
 
 	userID := uuid.New()
@@ -147,8 +191,8 @@ func TestFileHandler_CreateBinaryFile_Multipart(t *testing.T) {
 	bf, _ := domainFile.NewBinaryFile(fileID, projectID, "img.png", []byte{1, 2, 3}, time.Now())
 
 	mockFile := &mockFileUseCase{
-		createBinaryFileFunc: func(ctx context.Context, req fileApp.CreateBinaryFileRequest) (*domainFile.BinaryFile, error) {
-			if req.ProjectID == projectID && req.Name == "img.png" && bytes.Equal(req.Content, []byte{1, 2, 3}) {
+		uploadBinaryFileFunc: func(ctx context.Context, req *fileApp.UploadBinaryFileRequest) (*domainFile.BinaryFile, error) {
+			if req.ID == fileID && req.ProjectID == projectID && req.Name == "img.png" && bytes.Equal(req.Content, []byte{1, 2, 3}) {
 				return bf, nil
 			}
 			return nil, nil
@@ -162,14 +206,15 @@ func TestFileHandler_CreateBinaryFile_Multipart(t *testing.T) {
 	writer := multipart.NewWriter(body)
 	part, _ := writer.CreateFormFile("file", "img.png")
 	_, _ = part.Write([]byte{1, 2, 3})
+	_ = writer.WriteField("id", fileID.String())
 	_ = writer.WriteField("name", "img.png")
 	_ = writer.Close()
 
-	req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/projects/"+projectID.String()+"/files/binary", body)
+	req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/projects/"+projectID.String()+"/files", body)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 	rr := httptest.NewRecorder()
 
-	handler.CreateBinaryFile(rr, req)
+	handler.UploadFile(rr, req)
 	assertFileCreation(t, rr, fileID)
 }
 

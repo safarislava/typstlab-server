@@ -8,8 +8,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
+
 	fileApp "github.com/safarislava/typstlab-server/internal/application/file"
+	domainBlock "github.com/safarislava/typstlab-server/internal/domain/block"
 	domainFile "github.com/safarislava/typstlab-server/internal/domain/file"
+	"github.com/safarislava/typstlab-server/internal/infrastructure/serialization"
 )
 
 type FileHandler struct {
@@ -61,47 +65,52 @@ func (h *FileHandler) writeJSONTypstFileResponse(w http.ResponseWriter, f *domai
 	_ = json.NewEncoder(w).Encode(resp)
 }
 
-func (h *FileHandler) parseBinaryFileRequest(r *http.Request) (name string, content []byte, err error) {
+func (h *FileHandler) parseUploadRequest(r *http.Request) (id uuid.UUID, name string, content []byte, err error) {
 	contentType := r.Header.Get("Content-Type")
 	if strings.HasPrefix(contentType, "multipart/form-data") {
-		return h.parseMultipartBinaryFileRequest(r)
+		return h.parseMultipartUploadRequest(r)
 	}
-	return h.parseJSONBinaryFileRequest(r)
+	return h.parseJSONUploadRequest(r)
 }
 
-func (h *FileHandler) parseMultipartBinaryFileRequest(r *http.Request) (name string, content []byte, err error) {
+func (h *FileHandler) parseMultipartUploadRequest(r *http.Request) (id uuid.UUID, name string, content []byte, err error) {
 	if err = r.ParseMultipartForm(10 << 20); err != nil {
-		return "", nil, fmt.Errorf("failed to parse multipart form: %w", err)
+		return uuid.Nil, "", nil, fmt.Errorf("failed to parse multipart form: %w", err)
 	}
-	file, header, err := r.FormFile("file")
+	idStr := r.FormValue("id")
+	id, err = uuid.Parse(idStr)
 	if err != nil {
-		return "", nil, fmt.Errorf("failed to parse multipart form file: %w", err)
+		return uuid.Nil, "", nil, fmt.Errorf("invalid or missing file id: %w", err)
 	}
-	defer func() { _ = file.Close() }()
 	name = r.FormValue("name")
-	if name == "" {
-		name = header.Filename
+	file, header, fileErr := r.FormFile("file")
+	if fileErr == nil {
+		defer func() { _ = file.Close() }()
+		if name == "" {
+			name = header.Filename
+		}
+		content, err = io.ReadAll(file)
+		if err != nil {
+			return uuid.Nil, "", nil, fmt.Errorf("failed to read multipart file: %w", err)
+		}
 	}
-	content, err = io.ReadAll(file)
-	if err != nil {
-		return "", nil, fmt.Errorf("failed to read multipart file: %w", err)
-	}
-	return name, content, nil
+	return id, name, content, nil
 }
 
-func (h *FileHandler) parseJSONBinaryFileRequest(r *http.Request) (name string, content []byte, err error) {
-	var jsonReq jsonCreateBinaryFileRequest
+func (h *FileHandler) parseJSONUploadRequest(r *http.Request) (id uuid.UUID, name string, content []byte, err error) {
+	var jsonReq jsonUploadFileRequest
 	if err = json.NewDecoder(r.Body).Decode(&jsonReq); err != nil {
-		return "", nil, fmt.Errorf("failed to parse json request: %w", err)
+		return uuid.Nil, "", nil, fmt.Errorf("failed to parse json request: %w", err)
 	}
-	return jsonReq.Name, jsonReq.Content, nil
+	id, err = uuid.Parse(jsonReq.ID)
+	if err != nil {
+		return uuid.Nil, "", nil, fmt.Errorf("invalid or missing file id: %w", err)
+	}
+	return id, jsonReq.Name, jsonReq.Content, nil
 }
 
-type jsonCreateTypstFileRequest struct {
-	Name string `json:"name"`
-}
-
-type jsonCreateBinaryFileRequest struct {
+type jsonUploadFileRequest struct {
+	ID      string `json:"id"`
 	Name    string `json:"name"`
 	Content []byte `json:"content"`
 }
@@ -143,43 +152,18 @@ type jsonApplyFileChangesRequest struct {
 	Delta []byte `json:"delta"`
 }
 
-func (h *FileHandler) CreateTypstFile(w http.ResponseWriter, r *http.Request) {
-	p, ok := ProjectFromContext(r.Context())
-	if !ok {
-		w.WriteHeader(http.StatusInternalServerError)
-		_, _ = w.Write([]byte("Project not found in context"))
-		return
+func (h *FileHandler) initTypstFile(content []byte) (state []byte, blocks []domainBlock.Block, err error) {
+	if len(content) == 0 {
+		return nil, nil, nil
 	}
-
-	var jsonReq jsonCreateTypstFileRequest
-	if err := json.NewDecoder(r.Body).Decode(&jsonReq); err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		_, _ = w.Write([]byte("Invalid request body"))
-		return
-	}
-
-	if jsonReq.Name == "" {
-		w.WriteHeader(http.StatusBadRequest)
-		_, _ = w.Write([]byte("File name cannot be empty"))
-		return
-	}
-
-	req := fileApp.CreateTypstFileRequest{
-		ProjectID: p.ID(),
-		Name:      jsonReq.Name,
-	}
-
-	f, err := h.fileService.CreateTypstFile(r.Context(), req)
+	state, blocks, err = serialization.DeserializeTypstFile(content)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		_, _ = w.Write([]byte(err.Error()))
-		return
+		return nil, nil, fmt.Errorf("failed to deserialize typst file: %w", err)
 	}
-
-	h.writeJSONFileResponse(w, f, http.StatusCreated)
+	return state, blocks, nil
 }
 
-func (h *FileHandler) CreateBinaryFile(w http.ResponseWriter, r *http.Request) {
+func (h *FileHandler) UploadFile(w http.ResponseWriter, r *http.Request) {
 	p, ok := ProjectFromContext(r.Context())
 	if !ok {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -187,7 +171,7 @@ func (h *FileHandler) CreateBinaryFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	name, content, err := h.parseBinaryFileRequest(r)
+	id, name, content, err := h.parseUploadRequest(r)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		_, _ = w.Write([]byte(err.Error()))
@@ -200,13 +184,33 @@ func (h *FileHandler) CreateBinaryFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	req := fileApp.CreateBinaryFileRequest{
-		ProjectID: p.ID(),
-		Name:      name,
-		Content:   content,
+	var f domainFile.File
+	if strings.HasSuffix(name, ".typ") {
+		state, blocks, errInit := h.initTypstFile(content)
+		if errInit != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte(errInit.Error()))
+			return
+		}
+
+		req := fileApp.UploadTypstFileRequest{
+			ID:        id,
+			ProjectID: p.ID(),
+			Name:      name,
+			State:     state,
+			Blocks:    blocks,
+		}
+		f, err = h.fileService.UploadTypstFile(r.Context(), &req)
+	} else {
+		req := fileApp.UploadBinaryFileRequest{
+			ID:        id,
+			ProjectID: p.ID(),
+			Name:      name,
+			Content:   content,
+		}
+		f, err = h.fileService.UploadBinaryFile(r.Context(), &req)
 	}
 
-	f, err := h.fileService.CreateBinaryFile(r.Context(), req)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		_, _ = w.Write([]byte(err.Error()))
