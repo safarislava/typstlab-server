@@ -18,7 +18,7 @@ import (
 	domainProject "github.com/safarislava/typstlab-server/internal/domain/project"
 )
 
-const docTyp = "doc.typ"
+const docTyp = "doc.typxml"
 
 func testContext(userID uuid.UUID, project *domainProject.Project, file domainFile.File) context.Context {
 	ctx := context.WithValue(context.Background(), userIDKey, userID)
