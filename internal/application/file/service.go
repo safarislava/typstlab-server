@@ -11,12 +11,16 @@ import (
 	domainFile "github.com/safarislava/typstlab-server/internal/domain/file"
 )
 
-type CreateTypstFileRequest struct {
+type UploadTypstFileRequest struct {
+	ID        uuid.UUID
 	ProjectID uuid.UUID
 	Name      string
+	State     []byte
+	Blocks    []block.Block
 }
 
-type CreateBinaryFileRequest struct {
+type UploadBinaryFileRequest struct {
+	ID        uuid.UUID
 	ProjectID uuid.UUID
 	Name      string
 	Content   []byte
@@ -35,8 +39,8 @@ type Response struct {
 }
 
 type UseCase interface {
-	CreateTypstFile(ctx context.Context, req CreateTypstFileRequest) (*domainFile.TypstFile, error)
-	CreateBinaryFile(ctx context.Context, req CreateBinaryFileRequest) (*domainFile.BinaryFile, error)
+	UploadTypstFile(ctx context.Context, req *UploadTypstFileRequest) (*domainFile.TypstFile, error)
+	UploadBinaryFile(ctx context.Context, req *UploadBinaryFileRequest) (*domainFile.BinaryFile, error)
 	GetTypstFile(ctx context.Context, fileID uuid.UUID) (*domainFile.TypstFile, error)
 	GetBinaryFile(ctx context.Context, fileID uuid.UUID) (*domainFile.BinaryFile, error)
 	ApplyFileChanges(ctx context.Context, req ApplyFileChangesRequest) (*domainFile.TypstFile, error)
@@ -56,11 +60,10 @@ func NewService(repo Repository, merger Merger) UseCase {
 	}
 }
 
-func (s *Service) CreateTypstFile(ctx context.Context, req CreateTypstFileRequest) (*domainFile.TypstFile, error) {
-	var initialState []byte
-	f, err := domainFile.NewTypstFile(uuid.New(), req.ProjectID, req.Name, initialState, []block.Block(nil), time.Now())
+func (s *Service) UploadTypstFile(ctx context.Context, req *UploadTypstFileRequest) (*domainFile.TypstFile, error) {
+	f, err := domainFile.NewTypstFile(req.ID, req.ProjectID, req.Name, req.State, req.Blocks, time.Now())
 	if err != nil {
-		return nil, fmt.Errorf("failed to create typst file: %w", err)
+		return nil, fmt.Errorf("failed to upload typst file: %w", err)
 	}
 
 	if err := s.repo.SaveTypstFile(ctx, f); err != nil {
@@ -70,14 +73,14 @@ func (s *Service) CreateTypstFile(ctx context.Context, req CreateTypstFileReques
 	return f, nil
 }
 
-func (s *Service) CreateBinaryFile(ctx context.Context, req CreateBinaryFileRequest) (*domainFile.BinaryFile, error) {
-	f, err := domainFile.NewBinaryFile(uuid.New(), req.ProjectID, req.Name, req.Content, time.Now())
+func (s *Service) UploadBinaryFile(ctx context.Context, req *UploadBinaryFileRequest) (*domainFile.BinaryFile, error) {
+	f, err := domainFile.NewBinaryFile(req.ID, req.ProjectID, req.Name, req.Content, time.Now())
 	if err != nil {
-		return nil, fmt.Errorf("failed to create typst file: %w", err)
+		return nil, fmt.Errorf("failed to upload binary file: %w", err)
 	}
 
 	if err := s.repo.SaveBinaryFile(ctx, f); err != nil {
-		return nil, fmt.Errorf("failed to save typst file: %w", err)
+		return nil, fmt.Errorf("failed to save binary file: %w", err)
 	}
 
 	return f, nil

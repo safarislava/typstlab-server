@@ -14,12 +14,14 @@ type MemoryFileRepository struct {
 	mu          sync.RWMutex
 	typstFiles  map[uuid.UUID]*domainFile.TypstFile
 	binaryFiles map[uuid.UUID]*domainFile.BinaryFile
+	tombstones  map[uuid.UUID]bool
 }
 
 func NewMemoryFileRepository() *MemoryFileRepository {
 	return &MemoryFileRepository{
 		typstFiles:  make(map[uuid.UUID]*domainFile.TypstFile),
 		binaryFiles: make(map[uuid.UUID]*domainFile.BinaryFile),
+		tombstones:  make(map[uuid.UUID]bool),
 	}
 }
 
@@ -95,5 +97,13 @@ func (r *MemoryFileRepository) DeleteFile(_ context.Context, id uuid.UUID) error
 
 	delete(r.typstFiles, id)
 	delete(r.binaryFiles, id)
+	r.tombstones[id] = true
 	return nil
+}
+
+func (r *MemoryFileRepository) IsDeleted(_ context.Context, id uuid.UUID) (bool, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	return r.tombstones[id], nil
 }

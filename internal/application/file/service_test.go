@@ -1,6 +1,7 @@
 package file
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"testing"
@@ -13,11 +14,10 @@ import (
 )
 
 const (
-	testFileNameTypst       = "test.typ"
-	testFileNameBinary      = "image.png"
-	testNameSuccess         = "success"
-	testNameValidationError = "validation error empty name"
-	testNameSaveErr         = "save repository error"
+	testFileNameTypst  = "test.typ"
+	testFileNameBinary = "image.png"
+	testNameSuccess    = "success"
+	testNameSaveErr    = "save repository error"
 )
 
 type mockRepository struct {
@@ -100,6 +100,10 @@ func (r *mockRepository) DeleteFile(_ context.Context, id uuid.UUID) error {
 	return nil
 }
 
+func (r *mockRepository) IsDeleted(_ context.Context, id uuid.UUID) (bool, error) {
+	return false, nil
+}
+
 type mockMerger struct {
 	mergedState  []byte
 	mergedBlocks []block.Block
@@ -117,138 +121,154 @@ func setupTest(repo *mockRepository, merger *mockMerger) (UseCase, context.Conte
 	return NewService(repo, merger), context.Background()
 }
 
-func TestService_CreateTypstFile(t *testing.T) {
+func TestService_UploadTypstFile_Success(t *testing.T) {
 	t.Parallel()
 	projectID := uuid.New()
-
-	tests := []struct {
-		name      string
-		req       CreateTypstFileRequest
-		saveErr   error
-		wantErr   bool
-		checkFunc func(t *testing.T, f *domainFile.TypstFile)
-	}{
-		{
-			name: testNameSuccess,
-			req: CreateTypstFileRequest{
-				ProjectID: projectID,
-				Name:      testFileNameTypst,
-			},
-			wantErr: false,
-			checkFunc: func(t *testing.T, f *domainFile.TypstFile) {
-				if f.Name() != testFileNameTypst || f.ProjectID() != projectID {
-					t.Errorf("incorrect file: %+v", f)
-				}
-			},
-		},
-		{
-			name: testNameValidationError,
-			req: CreateTypstFileRequest{
-				ProjectID: projectID,
-				Name:      "",
-			},
-			wantErr: true,
-		},
-		{
-			name: testNameSaveErr,
-			req: CreateTypstFileRequest{
-				ProjectID: projectID,
-				Name:      testFileNameTypst,
-			},
-			saveErr: errors.New("save failed"),
-			wantErr: true,
-		},
-	}
-
-	for _, tt := range tests {
-		tt := tt
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			runCreateTypstSubtest(t, tt.req, tt.saveErr, tt.wantErr, tt.checkFunc)
-		})
-	}
-}
-
-func runCreateTypstSubtest(t *testing.T, req CreateTypstFileRequest, saveErr error, wantErr bool, checkFunc func(t *testing.T, f *domainFile.TypstFile)) {
-	t.Helper()
+	fileID := uuid.New()
 	repo := newMockRepository()
-	repo.saveErr = saveErr
 	service, ctx := setupTest(repo, &mockMerger{})
 
-	f, err := service.CreateTypstFile(ctx, req)
-	if (err != nil) != wantErr {
-		t.Fatalf("CreateTypstFile() error = %v, wantErr = %v", err, wantErr)
+	req := &UploadTypstFileRequest{
+		ID:        fileID,
+		ProjectID: projectID,
+		Name:      testFileNameTypst,
 	}
-	if err == nil && checkFunc != nil {
-		checkFunc(t, f)
+	f, err := service.UploadTypstFile(ctx, req)
+	if err != nil {
+		t.Fatalf("UploadTypstFile() unexpected error: %v", err)
+	}
+	if f.ID() != fileID || f.Name() != testFileNameTypst || f.ProjectID() != projectID {
+		t.Errorf("incorrect file fields: %+v", f)
+	}
+	if len(f.State()) != 0 {
+		t.Errorf("expected empty state, got %s", f.State())
 	}
 }
 
-func TestService_CreateBinaryFile(t *testing.T) {
+func TestService_UploadTypstFile_SuccessWithContent(t *testing.T) {
 	t.Parallel()
 	projectID := uuid.New()
+	fileID := uuid.New()
+	b, _ := block.NewBlock(uuid.New(), "Intro", "Content")
+	repo := newMockRepository()
+	service, ctx := setupTest(repo, &mockMerger{})
 
-	tests := []struct {
-		name      string
-		req       CreateBinaryFileRequest
-		saveErr   error
-		wantErr   bool
-		checkFunc func(t *testing.T, f *domainFile.BinaryFile)
-	}{
-		{
-			name: testNameSuccess,
-			req: CreateBinaryFileRequest{
-				ProjectID: projectID,
-				Name:      testFileNameBinary,
-				Content:   []byte{1, 2},
-			},
-			wantErr: false,
-			checkFunc: func(t *testing.T, f *domainFile.BinaryFile) {
-				if f.Name() != testFileNameBinary || f.ProjectID() != projectID {
-					t.Errorf("incorrect file: %+v", f)
-				}
-			},
-		},
-		{
-			name: testNameValidationError,
-			req: CreateBinaryFileRequest{
-				ProjectID: projectID,
-				Name:      "",
-			},
-			wantErr: true,
-		},
-		{
-			name: testNameSaveErr,
-			req: CreateBinaryFileRequest{
-				ProjectID: projectID,
-				Name:      testFileNameBinary,
-			},
-			saveErr: errors.New("save failed"),
-			wantErr: true,
-		},
+	req := &UploadTypstFileRequest{
+		ID:        fileID,
+		ProjectID: projectID,
+		Name:      testFileNameTypst,
+		State:     []byte("initial-crdt-state"),
+		Blocks:    []block.Block{b},
 	}
-
-	for _, tt := range tests {
-		tt := tt
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			runCreateBinarySubtest(t, tt.req, tt.saveErr, tt.wantErr, tt.checkFunc)
-		})
+	f, err := service.UploadTypstFile(ctx, req)
+	if err != nil {
+		t.Fatalf("UploadTypstFile() unexpected error: %v", err)
+	}
+	if f.ID() != fileID || f.Name() != testFileNameTypst || f.ProjectID() != projectID {
+		t.Errorf("incorrect file fields: %+v", f)
+	}
+	if string(f.State()) != "initial-crdt-state" {
+		t.Errorf("expected state 'initial-crdt-state', got %s", f.State())
+	}
+	if len(f.Blocks()) != 1 {
+		t.Errorf("expected 1 block, got %d", len(f.Blocks()))
 	}
 }
 
-func runCreateBinarySubtest(t *testing.T, req CreateBinaryFileRequest, saveErr error, wantErr bool, checkFunc func(t *testing.T, f *domainFile.BinaryFile)) {
-	t.Helper()
+func TestService_UploadTypstFile_ValidationError(t *testing.T) {
+	t.Parallel()
+	projectID := uuid.New()
 	repo := newMockRepository()
-	repo.saveErr = saveErr
 	service, ctx := setupTest(repo, &mockMerger{})
 
-	f, err := service.CreateBinaryFile(ctx, req)
-	if (err != nil) != wantErr {
-		t.Fatalf("CreateBinaryFile() error = %v, wantErr = %v", err, wantErr)
+	req := &UploadTypstFileRequest{
+		ID:        uuid.Nil,
+		ProjectID: projectID,
+		Name:      testFileNameTypst,
 	}
-	if err == nil && checkFunc != nil {
-		checkFunc(t, f)
+	_, err := service.UploadTypstFile(ctx, req)
+	if err == nil {
+		t.Error("expected validation error, got nil")
+	}
+}
+
+func TestService_UploadTypstFile_SaveErr(t *testing.T) {
+	t.Parallel()
+	projectID := uuid.New()
+	fileID := uuid.New()
+	repo := newMockRepository()
+	repo.saveErr = errors.New("save failed")
+	service, ctx := setupTest(repo, &mockMerger{})
+
+	req := &UploadTypstFileRequest{
+		ID:        fileID,
+		ProjectID: projectID,
+		Name:      testFileNameTypst,
+	}
+	_, err := service.UploadTypstFile(ctx, req)
+	if err == nil {
+		t.Error("expected save error, got nil")
+	}
+}
+
+func TestService_UploadBinaryFile_Success(t *testing.T) {
+	t.Parallel()
+	projectID := uuid.New()
+	fileID := uuid.New()
+	repo := newMockRepository()
+	service, ctx := setupTest(repo, &mockMerger{})
+
+	req := &UploadBinaryFileRequest{
+		ID:        fileID,
+		ProjectID: projectID,
+		Name:      testFileNameBinary,
+		Content:   []byte{1, 2},
+	}
+	f, err := service.UploadBinaryFile(ctx, req)
+	if err != nil {
+		t.Fatalf("UploadBinaryFile() unexpected error: %v", err)
+	}
+	if f.ID() != fileID || f.Name() != testFileNameBinary || f.ProjectID() != projectID {
+		t.Errorf("incorrect file: %+v", f)
+	}
+	if !bytes.Equal(f.Content(), []byte{1, 2}) {
+		t.Errorf("expected content %v, got %v", []byte{1, 2}, f.Content())
+	}
+}
+
+func TestService_UploadBinaryFile_ValidationError(t *testing.T) {
+	t.Parallel()
+	projectID := uuid.New()
+	repo := newMockRepository()
+	service, ctx := setupTest(repo, &mockMerger{})
+
+	req := &UploadBinaryFileRequest{
+		ID:        uuid.Nil,
+		ProjectID: projectID,
+		Name:      testFileNameBinary,
+	}
+	_, err := service.UploadBinaryFile(ctx, req)
+	if err == nil {
+		t.Error("expected validation error, got nil")
+	}
+}
+
+func TestService_UploadBinaryFile_SaveErr(t *testing.T) {
+	t.Parallel()
+	projectID := uuid.New()
+	fileID := uuid.New()
+	repo := newMockRepository()
+	repo.saveErr = errors.New("save failed")
+	service, ctx := setupTest(repo, &mockMerger{})
+
+	req := &UploadBinaryFileRequest{
+		ID:        fileID,
+		ProjectID: projectID,
+		Name:      testFileNameBinary,
+	}
+	_, err := service.UploadBinaryFile(ctx, req)
+	if err == nil {
+		t.Error("expected save error, got nil")
 	}
 }
 

@@ -14,6 +14,7 @@ import (
 	fileApp "github.com/safarislava/typstlab-server/internal/application/file"
 	projectApp "github.com/safarislava/typstlab-server/internal/application/project"
 	sessionApp "github.com/safarislava/typstlab-server/internal/application/session"
+	syncApp "github.com/safarislava/typstlab-server/internal/application/sync"
 	userApp "github.com/safarislava/typstlab-server/internal/application/user"
 	"github.com/safarislava/typstlab-server/internal/infrastructure/auth"
 	"github.com/safarislava/typstlab-server/internal/infrastructure/config"
@@ -44,6 +45,10 @@ func setupRouter(cfg *config.Config) *chi.Mux {
 	fileService := fileApp.NewService(fileRepo, yjsMerger)
 	fileHandler := projectHttp.NewFileHandler(fileService)
 
+	// Sync components
+	syncService := syncApp.NewService(fileRepo)
+	syncHandler := projectHttp.NewSyncHandler(syncService)
+
 	// Users / Auth components
 	userRepo := projectDb.NewMemoryUserRepository()
 	sessionRepo := projectDb.NewMemorySessionRepository()
@@ -57,7 +62,7 @@ func setupRouter(cfg *config.Config) *chi.Mux {
 	authMiddleware := projectHttp.NewAuthMiddleware(authUseCase)
 	accessMiddleware := projectHttp.NewAccessMiddleware(projectService, fileService)
 
-	registerRoutes(r, userHandler, authHandler, projectHandler, fileHandler, authMiddleware, accessMiddleware)
+	registerRoutes(r, userHandler, authHandler, projectHandler, fileHandler, syncHandler, authMiddleware, accessMiddleware)
 
 	return r
 }
@@ -68,6 +73,7 @@ func registerRoutes(
 	authHandler *projectHttp.AuthHandler,
 	projectHandler *projectHttp.ProjectHandler,
 	fileHandler *projectHttp.FileHandler,
+	syncHandler *projectHttp.SyncHandler,
 	authMiddleware *projectHttp.AuthMiddleware,
 	accessMiddleware *projectHttp.AccessMiddleware,
 ) {
@@ -88,10 +94,10 @@ func registerRoutes(
 		r.Route("/projects/{projectID}", func(r chi.Router) {
 			r.Use(accessMiddleware.ProjectAccess)
 			r.Get("/", projectHandler.Get)
-			r.Post("/files/typst", fileHandler.CreateTypstFile)
-			r.Post("/files/binary", fileHandler.CreateBinaryFile)
+			r.Post("/files", fileHandler.UploadFile)
 			r.Get("/files", fileHandler.ListProjectFiles)
 			r.With(accessMiddleware.FileAccess).Delete("/files/{fileID}", fileHandler.DeleteFile)
+			r.Post("/sync", syncHandler.Sync)
 		})
 
 		r.Route("/files", func(r chi.Router) {
