@@ -100,6 +100,10 @@ func (r *mockRepository) DeleteFile(_ context.Context, id uuid.UUID) error {
 	return nil
 }
 
+func (r *mockRepository) IsDeleted(_ context.Context, id uuid.UUID) (bool, error) {
+	return false, nil
+}
+
 type mockMerger struct {
 	mergedState  []byte
 	mergedBlocks []block.Block

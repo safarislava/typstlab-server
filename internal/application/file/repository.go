@@ -15,4 +15,5 @@ type Repository interface {
 	FindBinaryFileByID(ctx context.Context, id uuid.UUID) (*domainFile.BinaryFile, error)
 	FindByProjectID(ctx context.Context, projectID uuid.UUID) ([]domainFile.File, error)
 	DeleteFile(ctx context.Context, id uuid.UUID) error
+	IsDeleted(ctx context.Context, id uuid.UUID) (bool, error)
 }
