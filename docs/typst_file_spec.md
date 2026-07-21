@@ -1,4 +1,4 @@
-# Спецификация формата файлов Typst (Typst File Format Specification)
+# Спецификация формата typstxml (Typst File Format Specification)
 
 Настоящий документ содержит формальное описание структуры данных, формата сериализации (XML/JSON), представления CRDT-состояния и правил валидации файлов `Typst` (`.typ`) в платформе TypstLab.
 
