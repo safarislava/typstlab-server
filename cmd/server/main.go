@@ -101,11 +101,16 @@ func registerRoutes(
 		})
 
 		r.Route("/files", func(r chi.Router) {
-			r.Use(accessMiddleware.FileAccess)
-			r.Get("/typst/{fileID}", fileHandler.GetTypstFile)
-			r.Post("/typst/{fileID}/changes", fileHandler.ApplyFileChanges)
-			r.Get("/binary/{fileID}", fileHandler.GetBinaryFile)
-			r.Get("/binary/{fileID}/raw", fileHandler.GetBinaryFileRaw)
+			r.Route("/typst/{fileID}", func(r chi.Router) {
+				r.Use(accessMiddleware.FileAccess)
+				r.Get("/", fileHandler.GetTypstFile)
+				r.Post("/changes", fileHandler.ApplyFileChanges)
+			})
+			r.Route("/binary/{fileID}", func(r chi.Router) {
+				r.Use(accessMiddleware.FileAccess)
+				r.Get("/", fileHandler.GetBinaryFile)
+				r.Get("/raw", fileHandler.GetBinaryFileRaw)
+			})
 		})
 	})
 
