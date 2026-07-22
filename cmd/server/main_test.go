@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -10,9 +11,13 @@ import (
 	"testing"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
+	yjs "github.com/reearth/ygo/crdt"
 
 	"github.com/safarislava/typstlab-server/internal/infrastructure/config"
 )
+
+const _reqBody = `{"name":"My Test Project"}`
 
 func setupTestRouter() *chi.Mux {
 	cfg := config.Load("../../configs/config.json")
@@ -74,12 +79,11 @@ func TestCreateProject(t *testing.T) {
 
 	token := registerAndLogin(t, router, "test@example.com", "secretpassword")
 
-	reqBody := `{"name":"My Test Project"}`
 	req, err := http.NewRequestWithContext(
 		context.Background(),
 		http.MethodPost,
 		"/projects",
-		bytes.NewBufferString(reqBody),
+		bytes.NewBufferString(_reqBody),
 	)
 	if err != nil {
 		t.Fatalf("Failed to create request: %v", err)
@@ -158,5 +162,50 @@ func TestCreateProject_ValidationError(t *testing.T) {
 
 	if rr.Code != http.StatusBadRequest {
 		t.Errorf("Expected status code %d, got %d", http.StatusBadRequest, rr.Code)
+	}
+}
+
+func TestApplyFileChanges(t *testing.T) {
+	t.Parallel()
+	router := setupTestRouter()
+
+	token := registerAndLogin(t, router, "test_changes@example.com", "secretpassword")
+
+	// 1. Create Project
+	req, _ := http.NewRequestWithContext(context.Background(), http.MethodPost, "/projects", bytes.NewBufferString(_reqBody))
+	req.Header.Set("Authorization", "Bearer "+token)
+	rr := httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("Expected status code %d, got %d, body %s", http.StatusCreated, rr.Code, rr.Body.String())
+	}
+	var projectResp map[string]string
+	_ = json.NewDecoder(rr.Body).Decode(&projectResp)
+	projectID := projectResp["id"]
+
+	// 2. Upload Typst File
+	fileID := uuid.New().String()
+	uploadBody := fmt.Sprintf(`{"id":%q,"name":"test.typxml","content":""}`, fileID)
+	uploadReq, _ := http.NewRequestWithContext(context.Background(), http.MethodPost, "/projects/"+projectID+"/files", bytes.NewBufferString(uploadBody))
+	uploadReq.Header.Set("Authorization", "Bearer "+token)
+	uploadRr := httptest.NewRecorder()
+	router.ServeHTTP(uploadRr, uploadReq)
+	if uploadRr.Code != http.StatusCreated {
+		t.Fatalf("Expected upload status code %d, got %d, body %s", http.StatusCreated, uploadRr.Code, uploadRr.Body.String())
+	}
+
+	// 3. Apply File Changes
+	doc := yjs.New()
+	delta := doc.EncodeStateAsUpdate()
+	deltaB64 := base64.StdEncoding.EncodeToString(delta)
+
+	changesBody := fmt.Sprintf(`{"delta":%q}`, deltaB64)
+	changesReq, _ := http.NewRequestWithContext(context.Background(), http.MethodPost, "/files/typst/"+fileID+"/changes", bytes.NewBufferString(changesBody))
+	changesReq.Header.Set("Authorization", "Bearer "+token)
+	changesRr := httptest.NewRecorder()
+	router.ServeHTTP(changesRr, changesReq)
+
+	if changesRr.Code != http.StatusOK {
+		t.Errorf("Expected status code %d, got %d, body: %s", http.StatusOK, changesRr.Code, changesRr.Body.String())
 	}
 }
