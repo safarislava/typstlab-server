@@ -11,6 +11,7 @@ import (
 )
 
 type CreateRequest struct {
+	ID     uuid.UUID
 	UserID uuid.UUID
 	Name   string
 }
@@ -37,7 +38,7 @@ func NewService(repo Repository) UseCase {
 }
 
 func (s *Service) Create(ctx context.Context, req CreateRequest) (*CreateResponse, error) {
-	p, err := domain.NewProject(uuid.New(), []uuid.UUID{req.UserID}, req.Name, time.Now())
+	p, err := domain.NewProject(req.ID, []uuid.UUID{req.UserID}, req.Name, time.Now())
 	if err != nil {
 		return nil, fmt.Errorf("failed to create domain project: %w", err)
 	}

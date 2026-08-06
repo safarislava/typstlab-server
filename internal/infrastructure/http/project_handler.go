@@ -2,8 +2,11 @@ package http
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"time"
+
+	"github.com/google/uuid"
 
 	application "github.com/safarislava/typstlab-server/internal/application/project"
 )
@@ -19,6 +22,7 @@ func NewProjectHandler(service application.UseCase) *ProjectHandler {
 }
 
 type jsonCreateRequest struct {
+	ID   string `json:"id"`
 	Name string `json:"name"`
 }
 
@@ -43,6 +47,13 @@ func (h *ProjectHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	projectID, err := uuid.Parse(jsonReq.ID)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = fmt.Fprintf(w, "invalid or missing project id: %v", err)
+		return
+	}
+
 	userID, ok := UserIDFromContext(r.Context())
 	if !ok {
 		w.WriteHeader(http.StatusUnauthorized)
@@ -51,6 +62,7 @@ func (h *ProjectHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	req := application.CreateRequest{
+		ID:     projectID,
 		UserID: userID,
 		Name:   jsonReq.Name,
 	}

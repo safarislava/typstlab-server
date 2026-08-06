@@ -79,11 +79,13 @@ func TestCreateProject(t *testing.T) {
 
 	token := registerAndLogin(t, router, "test@example.com", "secretpassword")
 
+	projectID := uuid.New().String()
+	body := fmt.Sprintf(`{"id":%q,"name":"My Test Project"}`, projectID)
 	req, err := http.NewRequestWithContext(
 		context.Background(),
 		http.MethodPost,
 		"/projects",
-		bytes.NewBufferString(_reqBody),
+		bytes.NewBufferString(body),
 	)
 	if err != nil {
 		t.Fatalf("Failed to create request: %v", err)
@@ -105,8 +107,8 @@ func TestCreateProject(t *testing.T) {
 	if resp["name"] != "My Test Project" {
 		t.Errorf("Expected project name 'My Test Project', got %q", resp["name"])
 	}
-	if resp["id"] == "" {
-		t.Error("Expected project ID to be generated, got empty string")
+	if resp["id"] != projectID {
+		t.Errorf("Expected project ID %q, got %q", projectID, resp["id"])
 	}
 	if resp["updated_at"] == "" {
 		t.Error("Expected updated_at in response, got empty string")
@@ -145,7 +147,7 @@ func TestCreateProject_ValidationError(t *testing.T) {
 
 	token := registerAndLogin(t, router, "test2@example.com", "secretpassword")
 
-	reqBody := `{"name":""}`
+	reqBody := fmt.Sprintf(`{"id":%q,"name":""}`, uuid.New().String())
 	req, err := http.NewRequestWithContext(
 		context.Background(),
 		http.MethodPost,
@@ -172,7 +174,9 @@ func TestApplyFileChanges(t *testing.T) {
 	token := registerAndLogin(t, router, "test_changes@example.com", "secretpassword")
 
 	// 1. Create Project
-	req, _ := http.NewRequestWithContext(context.Background(), http.MethodPost, "/projects", bytes.NewBufferString(_reqBody))
+	projectID := uuid.New().String()
+	createProjectBody := fmt.Sprintf(`{"id":%q,"name":"My Test Project"}`, projectID)
+	req, _ := http.NewRequestWithContext(context.Background(), http.MethodPost, "/projects", bytes.NewBufferString(createProjectBody))
 	req.Header.Set("Authorization", "Bearer "+token)
 	rr := httptest.NewRecorder()
 	router.ServeHTTP(rr, req)
@@ -181,7 +185,6 @@ func TestApplyFileChanges(t *testing.T) {
 	}
 	var projectResp map[string]string
 	_ = json.NewDecoder(rr.Body).Decode(&projectResp)
-	projectID := projectResp["id"]
 
 	// 2. Upload Typst File
 	fileID := uuid.New().String()
