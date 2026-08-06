@@ -46,18 +46,22 @@ func (m *YjsMerger) MergeFile(state, delta []byte) (newState []byte, updatedBloc
 }
 
 func parseBlockElement(v any, doc *crdt.Doc) (block.Block, error) {
-	var idStr, name string
+	var idStr, name, content string
 
 	switch v := v.(type) {
 	case map[string]any:
-		idStr, _ = v["id"].(string)
-		name, _ = v["name"].(string)
+		idStr = extractString(v["id"])
+		name = extractString(v["name"])
+		content = extractString(v["content"])
 	case *crdt.YMap:
 		if idVal, ok := v.Get("id"); ok {
-			idStr, _ = idVal.(string)
+			idStr = extractString(idVal)
 		}
 		if nameVal, ok := v.Get("name"); ok {
-			name, _ = nameVal.(string)
+			name = extractString(nameVal)
+		}
+		if contentVal, ok := v.Get("content"); ok {
+			content = extractString(contentVal)
 		}
 	default:
 		return block.Block{}, fmt.Errorf("invalid element type: %T", v)
@@ -68,8 +72,10 @@ func parseBlockElement(v any, doc *crdt.Doc) (block.Block, error) {
 		return block.Block{}, fmt.Errorf("failed to parse block uuid %q: %w", idStr, err)
 	}
 
-	text := doc.GetText("block:" + idStr)
-	content := text.ToString()
+	if content == "" {
+		text := doc.GetText("block:" + idStr)
+		content = text.ToString()
+	}
 
 	b, err := block.NewBlock(id, name, content)
 	if err != nil {
@@ -77,4 +83,20 @@ func parseBlockElement(v any, doc *crdt.Doc) (block.Block, error) {
 	}
 
 	return b, nil
+}
+
+func extractString(val any) string {
+	switch v := val.(type) {
+	case string:
+		return v
+	case *crdt.YText:
+		if v != nil {
+			return v.ToString()
+		}
+	case fmt.Stringer:
+		if v != nil {
+			return v.String()
+		}
+	}
+	return ""
 }

@@ -16,6 +16,8 @@ import (
 	domain "github.com/safarislava/typstlab-server/internal/domain/project"
 )
 
+const testInvalidUUID = "invalid-uuid"
+
 type mockRepository struct {
 	saveFunc     func(ctx context.Context, p *domain.Project) error
 	findByIDFunc func(ctx context.Context, id uuid.UUID) (*domain.Project, error)
@@ -57,7 +59,8 @@ func TestProjectHandler_Create_Success(t *testing.T) {
 	handler := NewProjectHandler(svc)
 
 	const testProjectName = "HTTP Test Project"
-	reqBody, _ := json.Marshal(jsonCreateRequest{Name: testProjectName})
+	projectID := uuid.New().String()
+	reqBody, _ := json.Marshal(jsonCreateRequest{ID: projectID, Name: testProjectName})
 	ctx := context.WithValue(context.Background(), userIDKey, uuid.New())
 	req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/projects", bytes.NewBuffer(reqBody))
 	rr := httptest.NewRecorder()
@@ -76,8 +79,8 @@ func TestProjectHandler_Create_Success(t *testing.T) {
 	if resp.Name != testProjectName {
 		t.Errorf("Expected response name %q, got %q", testProjectName, resp.Name)
 	}
-	if resp.ID == "" {
-		t.Error("Expected ID to be populated")
+	if resp.ID != projectID {
+		t.Errorf("Expected ID %q, got %q", projectID, resp.ID)
 	}
 	if resp.UpdatedAt == "" {
 		t.Error("Expected UpdatedAt to be populated")
@@ -104,6 +107,25 @@ func TestProjectHandler_Create_InvalidJSON(t *testing.T) {
 	}
 }
 
+func TestProjectHandler_Create_InvalidID(t *testing.T) {
+	t.Parallel()
+
+	repo := &mockRepository{}
+	svc := application.NewService(repo)
+	handler := NewProjectHandler(svc)
+
+	reqBody, _ := json.Marshal(jsonCreateRequest{ID: testInvalidUUID, Name: "Project"})
+	ctx := context.WithValue(context.Background(), userIDKey, uuid.New())
+	req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/projects", bytes.NewBuffer(reqBody))
+	rr := httptest.NewRecorder()
+
+	handler.Create(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Errorf("Expected status code %d, got %d", http.StatusBadRequest, rr.Code)
+	}
+}
+
 func TestProjectHandler_Create_ServiceError(t *testing.T) {
 	t.Parallel()
 
@@ -111,7 +133,7 @@ func TestProjectHandler_Create_ServiceError(t *testing.T) {
 	svc := application.NewService(repo)
 	handler := NewProjectHandler(svc)
 
-	reqBody, _ := json.Marshal(jsonCreateRequest{Name: ""})
+	reqBody, _ := json.Marshal(jsonCreateRequest{ID: uuid.New().String(), Name: ""})
 	ctx := context.WithValue(context.Background(), userIDKey, uuid.New())
 	req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/projects", bytes.NewBuffer(reqBody))
 	rr := httptest.NewRecorder()

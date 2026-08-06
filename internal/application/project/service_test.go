@@ -49,7 +49,9 @@ func TestService_Create_Success(t *testing.T) {
 	svc := NewService(repo)
 
 	const testProjectName = "Test Project"
+	projectID := uuid.New()
 	req := CreateRequest{
+		ID:     projectID,
 		UserID: uuid.New(),
 		Name:   testProjectName,
 	}
@@ -67,8 +69,8 @@ func TestService_Create_Success(t *testing.T) {
 		t.Errorf("Expected Name %q, got %q", testProjectName, resp.Name)
 	}
 
-	if resp.ID == uuid.Nil {
-		t.Error("Expected valid generated ID, got uuid.Nil")
+	if resp.ID != projectID {
+		t.Errorf("Expected ID %s, got %s", projectID, resp.ID)
 	}
 
 	if resp.UpdatedAt.IsZero() {
@@ -83,6 +85,7 @@ func TestService_Create_ValidationError(t *testing.T) {
 	svc := NewService(repo)
 
 	req := CreateRequest{
+		ID:     uuid.New(),
 		UserID: uuid.New(),
 		Name:   "", // invalid name
 	}
@@ -94,6 +97,24 @@ func TestService_Create_ValidationError(t *testing.T) {
 
 	if !strings.Contains(err.Error(), "failed to create domain project") {
 		t.Errorf("Expected error to contain validation message, got: %v", err)
+	}
+}
+
+func TestService_Create_EmptyIDValidationError(t *testing.T) {
+	t.Parallel()
+
+	repo := &mockRepository{}
+	svc := NewService(repo)
+
+	req := CreateRequest{
+		ID:     uuid.Nil, // empty ID
+		UserID: uuid.New(),
+		Name:   "Test Project",
+	}
+
+	_, err := svc.Create(context.Background(), req)
+	if err == nil {
+		t.Fatal("Expected validation error for empty ID, got nil")
 	}
 }
 
@@ -109,6 +130,7 @@ func TestService_Create_SaveError(t *testing.T) {
 	svc := NewService(repo)
 
 	req := CreateRequest{
+		ID:     uuid.New(),
 		UserID: uuid.New(),
 		Name:   "Failing Save Project",
 	}

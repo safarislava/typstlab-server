@@ -133,8 +133,14 @@ paths:
             schema:
               type: object
               required:
+                - id
                 - name
               properties:
+                id:
+                  type: string
+                  format: uuid
+                  description: Client-generated project UUID
+                  example: 123e4567-e89b-12d3-a456-426614174000
                 name:
                   type: string
                   example: My Typst Report
