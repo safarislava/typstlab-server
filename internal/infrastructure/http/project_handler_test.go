@@ -16,6 +16,8 @@ import (
 	domain "github.com/safarislava/typstlab-server/internal/domain/project"
 )
 
+const testInvalidUUID = "invalid-uuid"
+
 type mockRepository struct {
 	saveFunc     func(ctx context.Context, p *domain.Project) error
 	findByIDFunc func(ctx context.Context, id uuid.UUID) (*domain.Project, error)
@@ -112,7 +114,7 @@ func TestProjectHandler_Create_InvalidID(t *testing.T) {
 	svc := application.NewService(repo)
 	handler := NewProjectHandler(svc)
 
-	reqBody, _ := json.Marshal(jsonCreateRequest{ID: "invalid-uuid", Name: "Project"})
+	reqBody, _ := json.Marshal(jsonCreateRequest{ID: testInvalidUUID, Name: "Project"})
 	ctx := context.WithValue(context.Background(), userIDKey, uuid.New())
 	req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/projects", bytes.NewBuffer(reqBody))
 	rr := httptest.NewRecorder()

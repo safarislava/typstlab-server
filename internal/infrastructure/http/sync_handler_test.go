@@ -141,7 +141,7 @@ func TestSyncHandler_Sync_InvalidFileID(t *testing.T) {
 	jsonReq := JSONSyncRequest{
 		Files: []JSONSyncFileRequest{
 			{
-				ID:   "invalid-uuid",
+				ID:   testInvalidUUID,
 				Name: "test.typ",
 				Type: string(domainFile.TypeTypst),
 			},

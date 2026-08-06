@@ -17,8 +17,6 @@ import (
 	"github.com/safarislava/typstlab-server/internal/infrastructure/config"
 )
 
-const _reqBody = `{"name":"My Test Project"}`
-
 func setupTestRouter() *chi.Mux {
 	cfg := config.Load("../../configs/config.json")
 	return setupRouter(cfg)

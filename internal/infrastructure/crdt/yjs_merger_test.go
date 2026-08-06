@@ -2,6 +2,7 @@ package crdt
 
 import (
 	"bytes"
+	"encoding/base64"
 	"testing"
 
 	"github.com/google/uuid"
@@ -124,5 +125,36 @@ func TestYjsMerger_MergeFile_UpdateAndSwap(t *testing.T) {
 
 	if bytes.Equal(initialState, newState) {
 		t.Error("expected state updates to change the binary update state representation")
+	}
+}
+
+func TestUserPayloadContent(t *testing.T) {
+	t.Parallel()
+
+	stateB64 := "AQv0iLN1AAcBBmJsb2NrcwEoAPSIs3UAAmlkAXckOTQzNTI4OTgtODlmNy00MjdhLTg2ZmEtM2E1MThhOGU3YzRiIQD0iLN1AARuYW1lASEA9IizdQAHY29udGVudAGh9IizdQMBofSIs3UEAaH0iLN1BQGh9IizdQYBofSIs3UHAaj0iLN1CAF3My8vIDEzLnR5cHhtbAog0LLRhNGLCgoK0LLRhNGL0LvRjNCy0LvQtNGE0YvQsgoK0LLQsqj0iLN1AgF3BtCy0YTRiwH0iLN1AQIH"
+	data, err := base64.StdEncoding.DecodeString(stateB64)
+	if err != nil {
+		t.Fatalf("failed to decode b64: %v", err)
+	}
+
+	merger := NewYjsMerger()
+	_, blocks, err := merger.MergeFile(data, nil)
+	if err != nil {
+		t.Fatalf("failed to merge file: %v", err)
+	}
+
+	if len(blocks) != 1 {
+		t.Fatalf("expected 1 block, got %d", len(blocks))
+	}
+
+	expectedID := uuid.MustParse("94352898-89f7-427a-86fa-3a518a8e7c4b")
+	if blocks[0].ID() != expectedID {
+		t.Errorf("expected ID %s, got %s", expectedID, blocks[0].ID())
+	}
+	if blocks[0].Name() != "вфы" {
+		t.Errorf("expected name %q, got %q", "вфы", blocks[0].Name())
+	}
+	if blocks[0].Content() == "" {
+		t.Error("expected non-empty content, got empty string")
 	}
 }
