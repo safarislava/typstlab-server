@@ -15,34 +15,52 @@ func NewYjsMerger() *YjsMerger {
 	return &YjsMerger{}
 }
 
-func (m *YjsMerger) MergeFile(state, delta []byte) (newState []byte, updatedBlocks []block.Block, err error) {
+func (m *YjsMerger) MergeFile(state, delta []byte) ([]byte, []block.Block, error) {
 	doc := crdt.New()
 
+	if err := applyUpdates(doc, state, delta); err != nil {
+		return nil, nil, err
+	}
+
+	updatedBlocks, err := extractBlocks(doc)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return doc.EncodeStateAsUpdate(), updatedBlocks, nil
+}
+
+func applyUpdates(doc *crdt.Doc, state, delta []byte) error {
 	if len(state) > 0 {
 		if err := doc.ApplyUpdate(state); err != nil {
-			return nil, nil, fmt.Errorf("failed to apply current state update: %w", err)
+			return fmt.Errorf("failed to apply current state update: %w", err)
 		}
 	}
-
 	if len(delta) > 0 {
 		if err := doc.ApplyUpdate(delta); err != nil {
-			return nil, nil, fmt.Errorf("failed to apply delta update: %w", err)
+			return fmt.Errorf("failed to apply delta update: %w", err)
 		}
 	}
+	return nil
+}
 
+func extractBlocks(doc *crdt.Doc) ([]block.Block, error) {
 	blocks := doc.GetArray("blocks").ToSlice()
-	updatedBlocks = make([]block.Block, 0, len(blocks))
+	updatedBlocks := make([]block.Block, 0, len(blocks))
+	seenIDs := make(map[uuid.UUID]bool)
 
 	for i, v := range blocks {
 		b, err := parseBlockElement(v, doc)
 		if err != nil {
-			return nil, nil, fmt.Errorf("failed to parse block element at index %d: %w", i, err)
+			return nil, fmt.Errorf("failed to parse block element at index %d: %w", i, err)
 		}
-		updatedBlocks = append(updatedBlocks, b)
+		if !seenIDs[b.ID()] {
+			seenIDs[b.ID()] = true
+			updatedBlocks = append(updatedBlocks, b)
+		}
 	}
 
-	newState = doc.EncodeStateAsUpdate()
-	return newState, updatedBlocks, nil
+	return updatedBlocks, nil
 }
 
 func parseBlockElement(v any, doc *crdt.Doc) (block.Block, error) {
