@@ -6,8 +6,9 @@ import (
 )
 
 type Config struct {
-	Port      string `json:"port"`
-	JWTSecret string `json:"jwt_secret"`
+	Port        string `json:"port"`
+	JWTSecret   string `json:"jwt_secret"`
+	DatabaseURL string `json:"database_url"`
 }
 
 func Load(path string) *Config {

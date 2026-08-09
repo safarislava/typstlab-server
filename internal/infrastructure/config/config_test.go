@@ -25,4 +25,8 @@ func TestLoad(t *testing.T) {
 	if cfg.JWTSecret == "" {
 		t.Error("Expected jwt_secret to be non-empty")
 	}
+
+	if cfg.DatabaseURL == "" {
+		t.Error("Expected database_url to be non-empty")
+	}
 }
