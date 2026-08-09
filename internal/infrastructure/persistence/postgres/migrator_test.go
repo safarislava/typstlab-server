@@ -25,3 +25,12 @@ func TestMigrationsFS(t *testing.T) {
 		t.Errorf("Expected first migration version to be 1, got %d", firstVersion)
 	}
 }
+
+func TestRunMigrations_InvalidURL(t *testing.T) {
+	t.Parallel()
+
+	err := RunMigrations("invalid-dsn")
+	if err == nil {
+		t.Error("Expected error when running migrations with invalid DSN, got nil")
+	}
+}
