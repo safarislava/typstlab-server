@@ -45,7 +45,6 @@ The backend is designed to be lightweight, high-performance, and secure, focusin
 
 - [ ] **Phase 1: Persistence & Storage Layer**
   - [ ] **PostgreSQL**: Replace in-memory repository with PostgreSQL (`pgx` / `sqlx`) for users, projects, ACL, and file metadata.
-  - [ ] **Database Migrations**: Add schema migration tool (`golang-migrate`).
   - [ ] **S3 / MinIO Storage**: Integrate S3-compatible object storage for binary assets (images, fonts, PDFs).
 
 - [ ] **Phase 2: Real-time Collaboration (WebSockets)**
