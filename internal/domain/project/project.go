@@ -1,6 +1,7 @@
 package project
 
 import (
+	"slices"
 	"time"
 
 	"github.com/google/uuid"
@@ -22,12 +23,7 @@ func (p *Project) UserIDs() []uuid.UUID {
 }
 
 func (p *Project) HasUser(userID uuid.UUID) bool {
-	for _, id := range p.userIDs {
-		if id == userID {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(p.userIDs, userID)
 }
 
 func (p *Project) AddUser(userID uuid.UUID) error {
