@@ -21,10 +21,16 @@ import (
 	"github.com/safarislava/typstlab-server/internal/infrastructure/crdt"
 	projectHttp "github.com/safarislava/typstlab-server/internal/infrastructure/http"
 	projectDb "github.com/safarislava/typstlab-server/internal/infrastructure/persistence"
+	"github.com/safarislava/typstlab-server/internal/infrastructure/persistence/postgres"
 )
 
 func main() {
 	cfg := config.Load("configs/config.json")
+
+	if err := postgres.RunMigrations(cfg.DatabaseURL); err != nil {
+		log.Fatalf("Migration failure: %v", err)
+	}
+
 	r := setupRouter(cfg)
 	log.Fatal(http.ListenAndServe(":"+cfg.Port, r))
 }

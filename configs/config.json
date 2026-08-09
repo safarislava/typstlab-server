@@ -1,4 +1,5 @@
 {
   "port": "8080",
-  "jwt_secret": "my-super-secret-key-that-is-very-long-and-secure"
+  "jwt_secret": "my-super-secret-key-that-is-very-long-and-secure",
+  "database_url": "postgres://postgres:postgres@localhost:5432/typstlab?sslmode=disable"
 }
