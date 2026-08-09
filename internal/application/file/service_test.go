@@ -100,7 +100,7 @@ func (r *mockRepository) DeleteFile(_ context.Context, id uuid.UUID) error {
 	return nil
 }
 
-func (r *mockRepository) IsDeleted(_ context.Context, id uuid.UUID) (bool, error) {
+func (r *mockRepository) IsDeleted(_ context.Context, _ uuid.UUID) (bool, error) {
 	return false, nil
 }
 
