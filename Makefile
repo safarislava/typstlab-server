@@ -2,13 +2,14 @@ DB_URL ?= "postgres://postgres:postgres@localhost:5432/typstlab?sslmode=disable"
 MIGRATIONS_DIR = migrations
 DOCKER_COMPOSE = deployments/docker-compose.yml
 
-.PHONY: run test lint migrate-create migrate-up migrate-down migrate-force docker-up docker-down help
+.PHONY: run test test-coverage lint migrate-create migrate-up migrate-down migrate-force docker-up docker-down help
 
 ## help: Print available Makefile commands
 help:
 	@echo "Available commands:"
 	@echo "  make run            - Run application locally"
-	@echo "  make test           - Run all tests"
+	@echo "  make test           - Run all tests with race detector and statement coverage"
+	@echo "  make test-coverage  - Run tests and generate HTML coverage report (coverage.html)"
 	@echo "  make lint           - Run golangci-lint"
 	@echo "  make docker-up      - Launch infrastructure services (postgres, minio) via Docker Compose"
 	@echo "  make docker-down    - Stop infrastructure Docker Compose services"
@@ -21,9 +22,15 @@ help:
 run:
 	go run ./cmd/server/main.go
 
-## test: Run unit and integration tests
+## test: Run unit and integration tests with race detector and coverage
 test:
-	go test -v ./...
+	go test -v -race -cover ./...
+
+## test-coverage: Run tests and generate HTML coverage report
+test-coverage:
+	go test -race -coverprofile=coverage.out ./...
+	go tool cover -html=coverage.out -o coverage.html
+	@echo "Coverage report generated at coverage.html"
 
 ## lint: Run linter
 lint:
