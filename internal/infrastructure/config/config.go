@@ -4,12 +4,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 )
 
 type Config struct {
-	Port        string `json:"port"`
-	JWTSecret   string `json:"jwt_secret"`
-	DatabaseURL string `json:"database_url"`
+	Port           string   `json:"port"`
+	JWTSecret      string   `json:"jwt_secret"`
+	DatabaseURL    string   `json:"database_url"`
+	AllowedOrigins []string `json:"allowed_origins,omitempty"`
 }
 
 func Load(path string) *Config {
@@ -24,14 +26,10 @@ func Load(path string) *Config {
 		panic("failed to decode config: " + err.Error())
 	}
 
-	if envPort := os.Getenv("PORT"); envPort != "" {
-		cfg.Port = envPort
-	}
-	if envJWTSecret := os.Getenv("JWT_SECRET"); envJWTSecret != "" {
-		cfg.JWTSecret = envJWTSecret
-	}
-	if envDbURL := os.Getenv("DATABASE_URL"); envDbURL != "" {
-		cfg.DatabaseURL = envDbURL
+	applyEnvOverrides(&cfg)
+
+	if len(cfg.AllowedOrigins) == 0 {
+		cfg.AllowedOrigins = []string{"https://*", "http://*"}
 	}
 
 	if cfg.Port == "" {
@@ -43,6 +41,31 @@ func Load(path string) *Config {
 	}
 
 	return &cfg
+}
+
+func applyEnvOverrides(cfg *Config) {
+	if envPort := os.Getenv("PORT"); envPort != "" {
+		cfg.Port = envPort
+	}
+	if envJWTSecret := os.Getenv("JWT_SECRET"); envJWTSecret != "" {
+		cfg.JWTSecret = envJWTSecret
+	}
+	if envDbURL := os.Getenv("DATABASE_URL"); envDbURL != "" {
+		cfg.DatabaseURL = envDbURL
+	}
+	if envOrigins := os.Getenv("ALLOWED_ORIGINS"); envOrigins != "" {
+		cfg.AllowedOrigins = parseOrigins(envOrigins)
+	}
+}
+
+func parseOrigins(raw string) []string {
+	var origins []string
+	for o := range strings.SplitSeq(raw, ",") {
+		if trimmed := strings.TrimSpace(o); trimmed != "" {
+			origins = append(origins, trimmed)
+		}
+	}
+	return origins
 }
 
 func (c *Config) Validate() error {

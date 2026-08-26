@@ -1,5 +1,11 @@
 {
   "port": "8080",
   "jwt_secret": "my-super-secret-key-that-is-very-long-and-secure",
-  "database_url": "postgres://postgres:postgres@localhost:5432/typstlab?sslmode=disable"
+  "database_url": "postgres://postgres:postgres@localhost:5432/typstlab?sslmode=disable",
+  "allowed_origins": [
+    "https://typstlab.safarislava.tech",
+    "http://localhost:3000",
+    "http://localhost:5173",
+    "http://localhost:8080"
+  ]
 }

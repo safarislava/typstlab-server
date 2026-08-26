@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/go-chi/cors"
 
 	"github.com/safarislava/typstlab-server/internal/domain/user"
 
@@ -35,10 +36,20 @@ func main() {
 	log.Fatal(http.ListenAndServe(":"+cfg.Port, r))
 }
 
+const headerContentType = "Content-Type"
+
 func setupRouter(cfg *config.Config) *chi.Mux {
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
+	r.Use(cors.Handler(cors.Options{
+		AllowedOrigins:   cfg.AllowedOrigins,
+		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"},
+		AllowedHeaders:   []string{"Accept", "Authorization", headerContentType, "X-CSRF-Token", "X-Requested-With"},
+		ExposedHeaders:   []string{"Link", "Content-Length", headerContentType},
+		AllowCredentials: true,
+		MaxAge:           300,
+	}))
 
 	// Projects components
 	projectRepo := projectDb.NewMemoryProjectRepository()

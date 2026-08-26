@@ -34,6 +34,9 @@ func TestLoad(t *testing.T) {
 	if cfg.DatabaseURL == "" {
 		t.Error("Expected database_url to be non-empty")
 	}
+	if len(cfg.AllowedOrigins) == 0 {
+		t.Error("Expected allowed_origins to be non-empty")
+	}
 }
 
 func TestConfig_Validate(t *testing.T) {
@@ -79,9 +82,13 @@ func TestConfig_Validate(t *testing.T) {
 //nolint:paralleltest // t.Setenv cannot be used in parallel tests
 func TestConfig_EnvOverride(t *testing.T) {
 	t.Setenv("PORT", "9999")
+	t.Setenv("ALLOWED_ORIGINS", "https://example.com, https://test.com")
 
 	cfg := Load("../../../configs/config.json")
 	if cfg.Port != "9999" {
 		t.Errorf("Expected PORT env override to be 9999, got %s", cfg.Port)
+	}
+	if len(cfg.AllowedOrigins) != 2 || cfg.AllowedOrigins[0] != "https://example.com" || cfg.AllowedOrigins[1] != "https://test.com" {
+		t.Errorf("Expected ALLOWED_ORIGINS env override to be [https://example.com, https://test.com], got %v", cfg.AllowedOrigins)
 	}
 }
