@@ -17,6 +17,8 @@ import (
 	"github.com/safarislava/typstlab-server/internal/infrastructure/config"
 )
 
+const typstlabLink = "https://typstlab.safarislava.tech"
+
 func setupTestRouter() *chi.Mux {
 	cfg := config.Load("../../configs/config.json")
 	return setupRouter(cfg)
@@ -208,5 +210,50 @@ func TestApplyFileChanges(t *testing.T) {
 
 	if changesRr.Code != http.StatusOK {
 		t.Errorf("Expected status code %d, got %d, body: %s", http.StatusOK, changesRr.Code, changesRr.Body.String())
+	}
+}
+
+func TestCORS(t *testing.T) {
+	t.Parallel()
+	router := setupTestRouter()
+
+	// 1. Preflight request (OPTIONS)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodOptions, "/health", http.NoBody)
+	if err != nil {
+		t.Fatalf("Failed to create preflight request: %v", err)
+	}
+	req.Header.Set("Origin", typstlabLink)
+	req.Header.Set("Access-Control-Request-Method", "GET")
+	req.Header.Set("Access-Control-Request-Headers", "Authorization, Content-Type")
+
+	rr := httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK && rr.Code != http.StatusNoContent {
+		t.Errorf("Expected preflight status 200 or 204, got %d", rr.Code)
+	}
+
+	allowOrigin := rr.Header().Get("Access-Control-Allow-Origin")
+	if allowOrigin != typstlabLink && allowOrigin != "*" {
+		t.Errorf("Expected Access-Control-Allow-Origin to match origin, got %q", allowOrigin)
+	}
+
+	// 2. Actual GET request with Origin
+	getReq, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "/health", http.NoBody)
+	if err != nil {
+		t.Fatalf("Failed to create GET request: %v", err)
+	}
+	getReq.Header.Set("Origin", typstlabLink)
+
+	getRr := httptest.NewRecorder()
+	router.ServeHTTP(getRr, getReq)
+
+	if getRr.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", getRr.Code)
+	}
+
+	getAllowOrigin := getRr.Header().Get("Access-Control-Allow-Origin")
+	if getAllowOrigin != typstlabLink && getAllowOrigin != "*" {
+		t.Errorf("Expected Access-Control-Allow-Origin on GET request, got %q", getAllowOrigin)
 	}
 }
