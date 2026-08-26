@@ -3,6 +3,7 @@ package http
 import (
 	"context"
 	"net/http"
+	"slices"
 	"strings"
 
 	"github.com/google/uuid"
@@ -75,12 +76,7 @@ func RequireAuthenticated(next http.Handler) http.Handler {
 }
 
 func isRoleAllowed(userRole domainUser.Role, allowedRoles []domainUser.Role) bool {
-	for _, role := range allowedRoles {
-		if userRole == role {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(allowedRoles, userRole)
 }
 
 func RequireRole(allowedRoles ...domainUser.Role) func(http.Handler) http.Handler {

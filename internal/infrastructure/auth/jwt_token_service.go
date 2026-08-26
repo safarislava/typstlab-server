@@ -55,7 +55,7 @@ func (s *JWTTokenService) Generate(userID uuid.UUID, role user.Role) (token.Toke
 }
 
 func (s *JWTTokenService) Validate(t token.Token) (uuid.UUID, user.Role, error) {
-	parsedToken, err := jwt.ParseWithClaims(t.Value(), &claims{}, func(jwtTok *jwt.Token) (interface{}, error) {
+	parsedToken, err := jwt.ParseWithClaims(t.Value(), &claims{}, func(jwtTok *jwt.Token) (any, error) {
 		if _, ok := jwtTok.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("unexpected signing method: %v", jwtTok.Header["alg"])
 		}
