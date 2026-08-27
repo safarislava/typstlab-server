@@ -117,7 +117,7 @@ func (m *mockMerger) MergeFile(_, _ []byte) ([]byte, []block.Block, error) {
 	return m.mergedState, m.mergedBlocks, nil
 }
 
-func setupTest(repo *mockRepository, merger *mockMerger) (UseCase, context.Context) {
+func setupTest(repo *mockRepository, merger *mockMerger) (*Service, context.Context) {
 	return NewService(repo, merger), context.Background()
 }
 

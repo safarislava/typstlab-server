@@ -22,16 +22,16 @@ type CreateResponse struct {
 	UpdatedAt time.Time
 }
 
-type UseCase interface {
-	Create(ctx context.Context, req CreateRequest) (*CreateResponse, error)
-	Get(ctx context.Context, projectID uuid.UUID) (*domain.Project, error)
+type Repository interface {
+	Save(ctx context.Context, p *domain.Project) error
+	FindByID(ctx context.Context, id uuid.UUID) (*domain.Project, error)
 }
 
 type Service struct {
 	repo Repository
 }
 
-func NewService(repo Repository) UseCase {
+func NewService(repo Repository) *Service {
 	return &Service{
 		repo: repo,
 	}

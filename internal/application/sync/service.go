@@ -8,7 +8,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/reearth/ygo/crdt"
 
-	fileApp "github.com/safarislava/typstlab-server/internal/application/file"
 	domainFile "github.com/safarislava/typstlab-server/internal/domain/file"
 )
 
@@ -44,15 +43,16 @@ type Response struct {
 	Instructions []Instruction
 }
 
-type UseCase interface {
-	Sync(ctx context.Context, projectID uuid.UUID, req *Request) (*Response, error)
+type Repository interface {
+	FindByProjectID(ctx context.Context, projectID uuid.UUID) ([]domainFile.File, error)
+	IsDeleted(ctx context.Context, id uuid.UUID) (bool, error)
 }
 
 type Service struct {
-	repo fileApp.Repository
+	repo Repository
 }
 
-func NewService(repo fileApp.Repository) UseCase {
+func NewService(repo Repository) *Service {
 	return &Service{
 		repo: repo,
 	}

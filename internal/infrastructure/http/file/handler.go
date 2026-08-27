@@ -1,6 +1,7 @@
-package http
+package file
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -13,20 +14,29 @@ import (
 	fileApp "github.com/safarislava/typstlab-server/internal/application/file"
 	domainBlock "github.com/safarislava/typstlab-server/internal/domain/block"
 	domainFile "github.com/safarislava/typstlab-server/internal/domain/file"
+	"github.com/safarislava/typstlab-server/internal/infrastructure/http/middleware"
 	"github.com/safarislava/typstlab-server/internal/infrastructure/serialization"
 )
 
-type FileHandler struct {
-	fileService fileApp.UseCase
+type Service interface {
+	UploadTypstFile(ctx context.Context, req *fileApp.UploadTypstFileRequest) (*domainFile.TypstFile, error)
+	UploadBinaryFile(ctx context.Context, req *fileApp.UploadBinaryFileRequest) (*domainFile.BinaryFile, error)
+	ListFilesByProject(ctx context.Context, projectID uuid.UUID) ([]domainFile.File, error)
+	ApplyFileChanges(ctx context.Context, req fileApp.ApplyFileChangesRequest) (*domainFile.TypstFile, error)
+	DeleteFile(ctx context.Context, fileID uuid.UUID) error
 }
 
-func NewFileHandler(fileService fileApp.UseCase) *FileHandler {
-	return &FileHandler{
+type Handler struct {
+	fileService Service
+}
+
+func NewHandler(fileService Service) *Handler {
+	return &Handler{
 		fileService: fileService,
 	}
 }
 
-func (h *FileHandler) writeJSONFileResponse(w http.ResponseWriter, f domainFile.File, status int) {
+func (h *Handler) writeJSONFileResponse(w http.ResponseWriter, f domainFile.File, status int) {
 	resp := JSONFileResponse{
 		ID:        f.ID().String(),
 		ProjectID: f.ProjectID().String(),
@@ -39,7 +49,7 @@ func (h *FileHandler) writeJSONFileResponse(w http.ResponseWriter, f domainFile.
 	_ = json.NewEncoder(w).Encode(resp)
 }
 
-func (h *FileHandler) writeJSONTypstFileResponse(w http.ResponseWriter, f *domainFile.TypstFile, status int) {
+func (h *Handler) writeJSONTypstFileResponse(w http.ResponseWriter, f *domainFile.TypstFile, status int) {
 	blocks := f.Blocks()
 	jsonBlocks := make([]JSONBlockResponse, len(blocks))
 	for i, b := range blocks {
@@ -65,7 +75,7 @@ func (h *FileHandler) writeJSONTypstFileResponse(w http.ResponseWriter, f *domai
 	_ = json.NewEncoder(w).Encode(resp)
 }
 
-func (h *FileHandler) parseUploadRequest(r *http.Request) (id uuid.UUID, name string, content []byte, err error) {
+func (h *Handler) parseUploadRequest(r *http.Request) (id uuid.UUID, name string, content []byte, err error) {
 	contentType := r.Header.Get("Content-Type")
 	if strings.HasPrefix(contentType, "multipart/form-data") {
 		return h.parseMultipartUploadRequest(r)
@@ -73,7 +83,7 @@ func (h *FileHandler) parseUploadRequest(r *http.Request) (id uuid.UUID, name st
 	return h.parseJSONUploadRequest(r)
 }
 
-func (h *FileHandler) parseMultipartUploadRequest(r *http.Request) (id uuid.UUID, name string, content []byte, err error) {
+func (h *Handler) parseMultipartUploadRequest(r *http.Request) (id uuid.UUID, name string, content []byte, err error) {
 	if err = r.ParseMultipartForm(10 << 20); err != nil {
 		return uuid.Nil, "", nil, fmt.Errorf("failed to parse multipart form: %w", err)
 	}
@@ -97,7 +107,7 @@ func (h *FileHandler) parseMultipartUploadRequest(r *http.Request) (id uuid.UUID
 	return id, name, content, nil
 }
 
-func (h *FileHandler) parseJSONUploadRequest(r *http.Request) (id uuid.UUID, name string, content []byte, err error) {
+func (h *Handler) parseJSONUploadRequest(r *http.Request) (id uuid.UUID, name string, content []byte, err error) {
 	var jsonReq jsonUploadFileRequest
 	if err = json.NewDecoder(r.Body).Decode(&jsonReq); err != nil {
 		return uuid.Nil, "", nil, fmt.Errorf("failed to parse json request: %w", err)
@@ -152,7 +162,7 @@ type jsonApplyFileChangesRequest struct {
 	Delta []byte `json:"delta"`
 }
 
-func (h *FileHandler) initTypstFile(content []byte) (state []byte, blocks []domainBlock.Block, err error) {
+func (h *Handler) initTypstFile(content []byte) (state []byte, blocks []domainBlock.Block, err error) {
 	if len(content) == 0 {
 		return nil, nil, nil
 	}
@@ -163,8 +173,8 @@ func (h *FileHandler) initTypstFile(content []byte) (state []byte, blocks []doma
 	return state, blocks, nil
 }
 
-func (h *FileHandler) UploadFile(w http.ResponseWriter, r *http.Request) {
-	p, ok := ProjectFromContext(r.Context())
+func (h *Handler) UploadFile(w http.ResponseWriter, r *http.Request) {
+	p, ok := middleware.ProjectFromContext(r.Context())
 	if !ok {
 		w.WriteHeader(http.StatusInternalServerError)
 		_, _ = w.Write([]byte("Project not found in context"))
@@ -220,8 +230,8 @@ func (h *FileHandler) UploadFile(w http.ResponseWriter, r *http.Request) {
 	h.writeJSONFileResponse(w, f, http.StatusCreated)
 }
 
-func (h *FileHandler) ListProjectFiles(w http.ResponseWriter, r *http.Request) {
-	p, ok := ProjectFromContext(r.Context())
+func (h *Handler) ListProjectFiles(w http.ResponseWriter, r *http.Request) {
+	p, ok := middleware.ProjectFromContext(r.Context())
 	if !ok {
 		w.WriteHeader(http.StatusInternalServerError)
 		_, _ = w.Write([]byte("Project not found in context"))
@@ -250,8 +260,8 @@ func (h *FileHandler) ListProjectFiles(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(resp)
 }
 
-func (h *FileHandler) GetTypstFile(w http.ResponseWriter, r *http.Request) {
-	f, ok := FileFromContext(r.Context())
+func (h *Handler) GetTypstFile(w http.ResponseWriter, r *http.Request) {
+	f, ok := middleware.FileFromContext(r.Context())
 	if !ok {
 		w.WriteHeader(http.StatusInternalServerError)
 		_, _ = w.Write([]byte("File not found in context"))
@@ -268,8 +278,8 @@ func (h *FileHandler) GetTypstFile(w http.ResponseWriter, r *http.Request) {
 	h.writeJSONTypstFileResponse(w, tf, http.StatusOK)
 }
 
-func (h *FileHandler) GetBinaryFile(w http.ResponseWriter, r *http.Request) {
-	f, ok := FileFromContext(r.Context())
+func (h *Handler) GetBinaryFile(w http.ResponseWriter, r *http.Request) {
+	f, ok := middleware.FileFromContext(r.Context())
 	if !ok {
 		w.WriteHeader(http.StatusInternalServerError)
 		_, _ = w.Write([]byte("File not found in context"))
@@ -296,8 +306,8 @@ func (h *FileHandler) GetBinaryFile(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(resp)
 }
 
-func (h *FileHandler) GetBinaryFileRaw(w http.ResponseWriter, r *http.Request) {
-	f, ok := FileFromContext(r.Context())
+func (h *Handler) GetBinaryFileRaw(w http.ResponseWriter, r *http.Request) {
+	f, ok := middleware.FileFromContext(r.Context())
 	if !ok {
 		w.WriteHeader(http.StatusInternalServerError)
 		_, _ = w.Write([]byte("File not found in context"))
@@ -316,8 +326,8 @@ func (h *FileHandler) GetBinaryFileRaw(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(bf.Content())
 }
 
-func (h *FileHandler) ApplyFileChanges(w http.ResponseWriter, r *http.Request) {
-	f, ok := FileFromContext(r.Context())
+func (h *Handler) ApplyFileChanges(w http.ResponseWriter, r *http.Request) {
+	f, ok := middleware.FileFromContext(r.Context())
 	if !ok {
 		w.WriteHeader(http.StatusInternalServerError)
 		_, _ = w.Write([]byte("File not found in context"))
@@ -353,9 +363,9 @@ func (h *FileHandler) ApplyFileChanges(w http.ResponseWriter, r *http.Request) {
 	h.writeJSONTypstFileResponse(w, updatedFile, http.StatusOK)
 }
 
-func (h *FileHandler) DeleteFile(w http.ResponseWriter, r *http.Request) {
-	p, okP := ProjectFromContext(r.Context())
-	f, okF := FileFromContext(r.Context())
+func (h *Handler) DeleteFile(w http.ResponseWriter, r *http.Request) {
+	p, okP := middleware.ProjectFromContext(r.Context())
+	f, okF := middleware.FileFromContext(r.Context())
 	if !okP || !okF {
 		w.WriteHeader(http.StatusInternalServerError)
 		_, _ = w.Write([]byte("Context requirements not met"))

@@ -38,14 +38,18 @@ type Response struct {
 	UpdatedAt time.Time
 }
 
-type UseCase interface {
-	UploadTypstFile(ctx context.Context, req *UploadTypstFileRequest) (*domainFile.TypstFile, error)
-	UploadBinaryFile(ctx context.Context, req *UploadBinaryFileRequest) (*domainFile.BinaryFile, error)
-	GetTypstFile(ctx context.Context, fileID uuid.UUID) (*domainFile.TypstFile, error)
-	GetBinaryFile(ctx context.Context, fileID uuid.UUID) (*domainFile.BinaryFile, error)
-	ApplyFileChanges(ctx context.Context, req ApplyFileChangesRequest) (*domainFile.TypstFile, error)
-	DeleteFile(ctx context.Context, fileID uuid.UUID) error
-	ListFilesByProject(ctx context.Context, projectID uuid.UUID) ([]domainFile.File, error)
+type Repository interface {
+	SaveTypstFile(ctx context.Context, f *domainFile.TypstFile) error
+	SaveBinaryFile(ctx context.Context, f *domainFile.BinaryFile) error
+	FindTypstFileByID(ctx context.Context, id uuid.UUID) (*domainFile.TypstFile, error)
+	FindBinaryFileByID(ctx context.Context, id uuid.UUID) (*domainFile.BinaryFile, error)
+	FindByProjectID(ctx context.Context, projectID uuid.UUID) ([]domainFile.File, error)
+	DeleteFile(ctx context.Context, id uuid.UUID) error
+	IsDeleted(ctx context.Context, id uuid.UUID) (bool, error)
+}
+
+type Merger interface {
+	MergeFile(state, delta []byte) (newState []byte, updatedBlocks []block.Block, err error)
 }
 
 type Service struct {
@@ -53,7 +57,7 @@ type Service struct {
 	merger Merger
 }
 
-func NewService(repo Repository, merger Merger) UseCase {
+func NewService(repo Repository, merger Merger) *Service {
 	return &Service{
 		repo:   repo,
 		merger: merger,

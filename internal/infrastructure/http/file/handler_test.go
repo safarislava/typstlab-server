@@ -1,4 +1,4 @@
-package http
+package file
 
 import (
 	"bytes"
@@ -16,17 +16,18 @@ import (
 	fileApp "github.com/safarislava/typstlab-server/internal/application/file"
 	domainFile "github.com/safarislava/typstlab-server/internal/domain/file"
 	domainProject "github.com/safarislava/typstlab-server/internal/domain/project"
+	"github.com/safarislava/typstlab-server/internal/infrastructure/http/middleware"
 )
 
 const docTyp = "doc.typxml"
 
 func testContext(userID uuid.UUID, project *domainProject.Project, file domainFile.File) context.Context {
-	ctx := context.WithValue(context.Background(), userIDKey, userID)
+	ctx := middleware.WithUserID(context.Background(), userID)
 	if project != nil {
-		ctx = context.WithValue(ctx, projectContextKey, project)
+		ctx = middleware.WithProject(ctx, project)
 	}
 	if file != nil {
-		ctx = context.WithValue(ctx, fileContextKey, file)
+		ctx = middleware.WithFile(ctx, file)
 	}
 	return ctx
 }
@@ -48,11 +49,8 @@ func assertFileCreation(t *testing.T, rr *httptest.ResponseRecorder, expectedFil
 }
 
 type mockFileUseCase struct {
-	fileApp.UseCase
 	uploadTypstFileFunc    func(ctx context.Context, req *fileApp.UploadTypstFileRequest) (*domainFile.TypstFile, error)
 	uploadBinaryFileFunc   func(ctx context.Context, req *fileApp.UploadBinaryFileRequest) (*domainFile.BinaryFile, error)
-	getTypstFileFunc       func(ctx context.Context, fileID uuid.UUID) (*domainFile.TypstFile, error)
-	getBinaryFileFunc      func(ctx context.Context, fileID uuid.UUID) (*domainFile.BinaryFile, error)
 	listFilesByProjectFunc func(ctx context.Context, projectID uuid.UUID) ([]domainFile.File, error)
 	applyFileChangesFunc   func(ctx context.Context, req fileApp.ApplyFileChangesRequest) (*domainFile.TypstFile, error)
 	deleteFileFunc         func(ctx context.Context, fileID uuid.UUID) error
@@ -68,20 +66,6 @@ func (m *mockFileUseCase) UploadTypstFile(ctx context.Context, req *fileApp.Uplo
 func (m *mockFileUseCase) UploadBinaryFile(ctx context.Context, req *fileApp.UploadBinaryFileRequest) (*domainFile.BinaryFile, error) {
 	if m.uploadBinaryFileFunc != nil {
 		return m.uploadBinaryFileFunc(ctx, req)
-	}
-	return nil, nil
-}
-
-func (m *mockFileUseCase) GetTypstFile(ctx context.Context, fileID uuid.UUID) (*domainFile.TypstFile, error) {
-	if m.getTypstFileFunc != nil {
-		return m.getTypstFileFunc(ctx, fileID)
-	}
-	return nil, nil
-}
-
-func (m *mockFileUseCase) GetBinaryFile(ctx context.Context, fileID uuid.UUID) (*domainFile.BinaryFile, error) {
-	if m.getBinaryFileFunc != nil {
-		return m.getBinaryFileFunc(ctx, fileID)
 	}
 	return nil, nil
 }
@@ -126,7 +110,7 @@ func TestFileHandler_UploadTypstFile(t *testing.T) {
 		},
 	}
 
-	handler := NewFileHandler(mockFile)
+	handler := NewHandler(mockFile)
 	ctx := testContext(userID, p, nil)
 
 	reqBody, _ := json.Marshal(jsonUploadFileRequest{
@@ -151,7 +135,6 @@ func TestFileHandler_UploadTypstFile_WithXML(t *testing.T) {
 	blockID := uuid.New()
 	tf, _ := domainFile.NewTypstFile(fileID, projectID, docTyp, []byte("state-bytes"), nil, time.Now())
 
-	// valid XML format matching internal/infrastructure/serialization/xml_block.go
 	xmlData := fmt.Sprintf(`<file state="c3RhdGUtYnl0ZXM="><block id=%q name="Intro">Content</block></file>`, blockID.String())
 
 	mockFile := &mockFileUseCase{
@@ -165,7 +148,7 @@ func TestFileHandler_UploadTypstFile_WithXML(t *testing.T) {
 		},
 	}
 
-	handler := NewFileHandler(mockFile)
+	handler := NewHandler(mockFile)
 	ctx := testContext(userID, p, nil)
 
 	reqBody, _ := json.Marshal(jsonUploadFileRequest{
@@ -199,7 +182,7 @@ func TestFileHandler_UploadBinaryFile_Multipart(t *testing.T) {
 		},
 	}
 
-	handler := NewFileHandler(mockFile)
+	handler := NewHandler(mockFile)
 	ctx := testContext(userID, p, nil)
 
 	body := &bytes.Buffer{}
@@ -232,7 +215,7 @@ func TestFileHandler_ListProjectFiles(t *testing.T) {
 		},
 	}
 
-	handler := NewFileHandler(mockFile)
+	handler := NewHandler(mockFile)
 	ctx := testContext(userID, p, nil)
 
 	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/projects/"+projectID.String()+"/files", nil)
@@ -262,7 +245,7 @@ func TestFileHandler_GetTypstFile(t *testing.T) {
 	tf, _ := domainFile.NewTypstFile(fileID, projectID, docTyp, []byte("state"), nil, time.Now())
 	mockFile := &mockFileUseCase{}
 
-	handler := NewFileHandler(mockFile)
+	handler := NewHandler(mockFile)
 	ctx := testContext(userID, nil, tf)
 
 	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/files/typst/"+fileID.String(), nil)
@@ -292,7 +275,7 @@ func TestFileHandler_GetBinaryFileRaw(t *testing.T) {
 	bf, _ := domainFile.NewBinaryFile(fileID, projectID, "image.png", []byte{4, 5, 6}, time.Now())
 	mockFile := &mockFileUseCase{}
 
-	handler := NewFileHandler(mockFile)
+	handler := NewHandler(mockFile)
 	ctx := testContext(userID, nil, bf)
 
 	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/files/binary/"+fileID.String()+"/raw", nil)
@@ -328,7 +311,7 @@ func TestFileHandler_ApplyFileChanges(t *testing.T) {
 		},
 	}
 
-	handler := NewFileHandler(mockFile)
+	handler := NewHandler(mockFile)
 	ctx := testContext(userID, nil, tf)
 
 	reqBody, _ := json.Marshal(jsonApplyFileChangesRequest{Delta: []byte("changes")})
@@ -369,7 +352,7 @@ func TestFileHandler_DeleteFile(t *testing.T) {
 		},
 	}
 
-	handler := NewFileHandler(mockFile)
+	handler := NewHandler(mockFile)
 	ctx := testContext(userID, p, tf)
 
 	req := httptest.NewRequestWithContext(ctx, http.MethodDelete, "/projects/"+projectID.String()+"/files/"+fileID.String(), nil)

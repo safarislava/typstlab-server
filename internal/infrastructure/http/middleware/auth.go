@@ -1,4 +1,4 @@
-package http
+package middleware
 
 import (
 	"context"
@@ -8,7 +8,6 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/safarislava/typstlab-server/internal/application/auth"
 	domainToken "github.com/safarislava/typstlab-server/internal/domain/token"
 	domainUser "github.com/safarislava/typstlab-server/internal/domain/user"
 )
@@ -20,11 +19,15 @@ const (
 	roleKey   contextKey = "role"
 )
 
-type AuthMiddleware struct {
-	authService auth.UseCase
+type AuthService interface {
+	Authorize(t domainToken.Token) (uuid.UUID, domainUser.Role, error)
 }
 
-func NewAuthMiddleware(authService auth.UseCase) *AuthMiddleware {
+type AuthMiddleware struct {
+	authService AuthService
+}
+
+func NewAuthMiddleware(authService AuthService) *AuthMiddleware {
 	return &AuthMiddleware{
 		authService: authService,
 	}
@@ -97,4 +100,8 @@ func RequireRole(allowedRoles ...domainUser.Role) func(http.Handler) http.Handle
 func UserIDFromContext(ctx context.Context) (uuid.UUID, bool) {
 	id, ok := ctx.Value(userIDKey).(uuid.UUID)
 	return id, ok
+}
+
+func WithUserID(ctx context.Context, id uuid.UUID) context.Context {
+	return context.WithValue(ctx, userIDKey, id)
 }

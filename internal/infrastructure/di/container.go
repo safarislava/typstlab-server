@@ -19,7 +19,12 @@ import (
 	"github.com/safarislava/typstlab-server/internal/infrastructure/auth"
 	"github.com/safarislava/typstlab-server/internal/infrastructure/config"
 	"github.com/safarislava/typstlab-server/internal/infrastructure/crdt"
-	projectHttp "github.com/safarislava/typstlab-server/internal/infrastructure/http"
+	authHttp "github.com/safarislava/typstlab-server/internal/infrastructure/http/auth"
+	fileHttp "github.com/safarislava/typstlab-server/internal/infrastructure/http/file"
+	middlewareHttp "github.com/safarislava/typstlab-server/internal/infrastructure/http/middleware"
+	projectHttp "github.com/safarislava/typstlab-server/internal/infrastructure/http/project"
+	syncHttp "github.com/safarislava/typstlab-server/internal/infrastructure/http/sync"
+	userHttp "github.com/safarislava/typstlab-server/internal/infrastructure/http/user"
 	"github.com/safarislava/typstlab-server/internal/infrastructure/persistence"
 )
 
@@ -52,45 +57,45 @@ type Container struct {
 	yjsMerger     *crdt.YjsMerger
 	yjsMergerOnce sync.Once
 
-	// Application Services / UseCases
-	projectService     projectApp.UseCase
+	// Application Services
+	projectService     *projectApp.Service
 	projectServiceOnce sync.Once
 
-	fileService     fileApp.UseCase
+	fileService     *fileApp.Service
 	fileServiceOnce sync.Once
 
-	syncService     syncApp.UseCase
+	syncService     *syncApp.Service
 	syncServiceOnce sync.Once
 
-	userService     userApp.UseCase
+	userService     *userApp.Service
 	userServiceOnce sync.Once
 
-	sessionService     sessionApp.UseCase
+	sessionService     *sessionApp.Service
 	sessionServiceOnce sync.Once
 
-	authService     appAuth.UseCase
+	authService     *appAuth.Service
 	authServiceOnce sync.Once
 
 	// HTTP Handlers & Middlewares
-	projectHandler     *projectHttp.ProjectHandler
+	projectHandler     *projectHttp.Handler
 	projectHandlerOnce sync.Once
 
-	fileHandler     *projectHttp.FileHandler
+	fileHandler     *fileHttp.Handler
 	fileHandlerOnce sync.Once
 
-	syncHandler     *projectHttp.SyncHandler
+	syncHandler     *syncHttp.Handler
 	syncHandlerOnce sync.Once
 
-	userHandler     *projectHttp.UserHandler
+	userHandler     *userHttp.Handler
 	userHandlerOnce sync.Once
 
-	authHandler     *projectHttp.AuthHandler
+	authHandler     *authHttp.Handler
 	authHandlerOnce sync.Once
 
-	authMiddleware     *projectHttp.AuthMiddleware
+	authMiddleware     *middlewareHttp.AuthMiddleware
 	authMiddlewareOnce sync.Once
 
-	accessMiddleware     *projectHttp.AccessMiddleware
+	accessMiddleware     *middlewareHttp.AccessMiddleware
 	accessMiddlewareOnce sync.Once
 
 	// Router
@@ -167,7 +172,7 @@ func (c *Container) YjsMerger() *crdt.YjsMerger {
 }
 
 // ProjectService lazily initializes and returns the project application service.
-func (c *Container) ProjectService() projectApp.UseCase {
+func (c *Container) ProjectService() *projectApp.Service {
 	c.projectServiceOnce.Do(func() {
 		c.projectService = projectApp.NewService(c.ProjectRepo())
 	})
@@ -175,7 +180,7 @@ func (c *Container) ProjectService() projectApp.UseCase {
 }
 
 // FileService lazily initializes and returns the file application service.
-func (c *Container) FileService() fileApp.UseCase {
+func (c *Container) FileService() *fileApp.Service {
 	c.fileServiceOnce.Do(func() {
 		c.fileService = fileApp.NewService(c.FileRepo(), c.YjsMerger())
 	})
@@ -183,7 +188,7 @@ func (c *Container) FileService() fileApp.UseCase {
 }
 
 // SyncService lazily initializes and returns the sync application service.
-func (c *Container) SyncService() syncApp.UseCase {
+func (c *Container) SyncService() *syncApp.Service {
 	c.syncServiceOnce.Do(func() {
 		c.syncService = syncApp.NewService(c.FileRepo())
 	})
@@ -191,7 +196,7 @@ func (c *Container) SyncService() syncApp.UseCase {
 }
 
 // UserService lazily initializes and returns the user application service.
-func (c *Container) UserService() userApp.UseCase {
+func (c *Container) UserService() *userApp.Service {
 	c.userServiceOnce.Do(func() {
 		c.userService = userApp.NewService(c.UserRepo(), c.Hasher())
 	})
@@ -199,7 +204,7 @@ func (c *Container) UserService() userApp.UseCase {
 }
 
 // SessionService lazily initializes and returns the session application service.
-func (c *Container) SessionService() sessionApp.UseCase {
+func (c *Container) SessionService() *sessionApp.Service {
 	c.sessionServiceOnce.Do(func() {
 		c.sessionService = sessionApp.NewService(c.SessionRepo())
 	})
@@ -207,7 +212,7 @@ func (c *Container) SessionService() sessionApp.UseCase {
 }
 
 // AuthService lazily initializes and returns the auth application service.
-func (c *Container) AuthService() appAuth.UseCase {
+func (c *Container) AuthService() *appAuth.Service {
 	c.authServiceOnce.Do(func() {
 		c.authService = appAuth.NewService(
 			c.UserService(),
@@ -220,57 +225,57 @@ func (c *Container) AuthService() appAuth.UseCase {
 }
 
 // ProjectHandler lazily initializes and returns the project HTTP handler.
-func (c *Container) ProjectHandler() *projectHttp.ProjectHandler {
+func (c *Container) ProjectHandler() *projectHttp.Handler {
 	c.projectHandlerOnce.Do(func() {
-		c.projectHandler = projectHttp.NewProjectHandler(c.ProjectService())
+		c.projectHandler = projectHttp.NewHandler(c.ProjectService())
 	})
 	return c.projectHandler
 }
 
 // FileHandler lazily initializes and returns the file HTTP handler.
-func (c *Container) FileHandler() *projectHttp.FileHandler {
+func (c *Container) FileHandler() *fileHttp.Handler {
 	c.fileHandlerOnce.Do(func() {
-		c.fileHandler = projectHttp.NewFileHandler(c.FileService())
+		c.fileHandler = fileHttp.NewHandler(c.FileService())
 	})
 	return c.fileHandler
 }
 
 // SyncHandler lazily initializes and returns the sync HTTP handler.
-func (c *Container) SyncHandler() *projectHttp.SyncHandler {
+func (c *Container) SyncHandler() *syncHttp.Handler {
 	c.syncHandlerOnce.Do(func() {
-		c.syncHandler = projectHttp.NewSyncHandler(c.SyncService())
+		c.syncHandler = syncHttp.NewHandler(c.SyncService())
 	})
 	return c.syncHandler
 }
 
 // UserHandler lazily initializes and returns the user HTTP handler.
-func (c *Container) UserHandler() *projectHttp.UserHandler {
+func (c *Container) UserHandler() *userHttp.Handler {
 	c.userHandlerOnce.Do(func() {
-		c.userHandler = projectHttp.NewUserHandler(c.UserService())
+		c.userHandler = userHttp.NewHandler(c.UserService())
 	})
 	return c.userHandler
 }
 
 // AuthHandler lazily initializes and returns the auth HTTP handler.
-func (c *Container) AuthHandler() *projectHttp.AuthHandler {
+func (c *Container) AuthHandler() *authHttp.Handler {
 	c.authHandlerOnce.Do(func() {
-		c.authHandler = projectHttp.NewAuthHandler(c.AuthService())
+		c.authHandler = authHttp.NewHandler(c.AuthService())
 	})
 	return c.authHandler
 }
 
 // AuthMiddleware lazily initializes and returns the auth middleware.
-func (c *Container) AuthMiddleware() *projectHttp.AuthMiddleware {
+func (c *Container) AuthMiddleware() *middlewareHttp.AuthMiddleware {
 	c.authMiddlewareOnce.Do(func() {
-		c.authMiddleware = projectHttp.NewAuthMiddleware(c.AuthService())
+		c.authMiddleware = middlewareHttp.NewAuthMiddleware(c.AuthService())
 	})
 	return c.authMiddleware
 }
 
 // AccessMiddleware lazily initializes and returns the access middleware.
-func (c *Container) AccessMiddleware() *projectHttp.AccessMiddleware {
+func (c *Container) AccessMiddleware() *middlewareHttp.AccessMiddleware {
 	c.accessMiddlewareOnce.Do(func() {
-		c.accessMiddleware = projectHttp.NewAccessMiddleware(c.ProjectService(), c.FileService())
+		c.accessMiddleware = middlewareHttp.NewAccessMiddleware(c.ProjectService(), c.FileService())
 	})
 	return c.accessMiddleware
 }
@@ -314,8 +319,8 @@ func (c *Container) registerRoutes(r *chi.Mux) {
 	// Protected routes
 	r.Group(func(r chi.Router) {
 		r.Use(authMiddleware.Authenticate)
-		r.Use(projectHttp.RequireAuthenticated)
-		r.Use(projectHttp.RequireRole(user.RoleUser))
+		r.Use(middlewareHttp.RequireAuthenticated)
+		r.Use(middlewareHttp.RequireRole(user.RoleUser))
 
 		r.Post("/projects", projectHandler.Create)
 

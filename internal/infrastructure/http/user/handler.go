@@ -1,18 +1,23 @@
-package http
+package user
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 
 	"github.com/safarislava/typstlab-server/internal/application/user"
 )
 
-type UserHandler struct {
-	userService user.UseCase
+type Service interface {
+	Register(ctx context.Context, req user.RegisterRequest) (*user.RegisterResponse, error)
 }
 
-func NewUserHandler(userService user.UseCase) *UserHandler {
-	return &UserHandler{
+type Handler struct {
+	userService Service
+}
+
+func NewHandler(userService Service) *Handler {
+	return &Handler{
 		userService: userService,
 	}
 }
@@ -29,7 +34,7 @@ type jsonRegisterResponse struct {
 	Role  string `json:"role"`
 }
 
-func (h *UserHandler) Register(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	var jsonReq jsonRegisterRequest
 	if err := json.NewDecoder(r.Body).Decode(&jsonReq); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
