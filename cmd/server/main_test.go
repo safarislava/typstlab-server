@@ -21,7 +21,10 @@ import (
 const typstlabLink = "https://typstlab.safarislava.tech"
 
 func setupTestRouter() *chi.Mux {
-	cfg := config.Load("../../configs/config.json")
+	cfg, err := config.Load("../../configs/config.json")
+	if err != nil {
+		panic(err)
+	}
 	return di.New(cfg).Router()
 }
 

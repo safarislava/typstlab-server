@@ -3,6 +3,7 @@ package config
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"strings"
 )
@@ -11,36 +12,35 @@ type Config struct {
 	Port           string   `json:"port"`
 	JWTSecret      string   `json:"jwt_secret"`
 	DatabaseURL    string   `json:"database_url"`
-	AllowedOrigins []string `json:"allowed_origins,omitempty"`
+	AllowedOrigins []string `json:"allowed_origins"`
 }
 
-func Load(path string) *Config {
+var (
+	ErrPortRequired           = errors.New("port is required and cannot be empty")
+	ErrJWTSecretRequired      = errors.New("jwt_secret is required and cannot be empty")
+	ErrDatabaseURLRequired    = errors.New("database_url is required and cannot be empty")
+	ErrAllowedOriginsRequired = errors.New("allowed_origins is required and cannot be empty")
+)
+
+func Load(path string) (*Config, error) {
 	file, err := os.Open(path)
 	if err != nil {
-		panic("config file " + path + " is missing: " + err.Error())
+		return nil, fmt.Errorf("config file %s is missing: %w", path, err)
 	}
 	defer func() { _ = file.Close() }()
 
 	var cfg Config
 	if err := json.NewDecoder(file).Decode(&cfg); err != nil {
-		panic("failed to decode config: " + err.Error())
+		return nil, fmt.Errorf("failed to decode config: %w", err)
 	}
 
 	applyEnvOverrides(&cfg)
 
-	if len(cfg.AllowedOrigins) == 0 {
-		cfg.AllowedOrigins = []string{"https://*", "http://*"}
-	}
-
-	if cfg.Port == "" {
-		cfg.Port = "8080"
-	}
-
 	if err := cfg.Validate(); err != nil {
-		panic("invalid configuration: " + err.Error())
+		return nil, fmt.Errorf("invalid configuration: %w", err)
 	}
 
-	return &cfg
+	return &cfg, nil
 }
 
 func applyEnvOverrides(cfg *Config) {
@@ -68,12 +68,6 @@ func parseOrigins(raw string) []string {
 	return origins
 }
 
-var (
-	ErrPortRequired        = errors.New("port is required")
-	ErrJWTSecretRequired   = errors.New("jwt_secret is required and cannot be empty")
-	ErrDatabaseURLRequired = errors.New("database_url is required and cannot be empty")
-)
-
 func (c *Config) Validate() error {
 	if c.Port == "" {
 		return ErrPortRequired
@@ -83,6 +77,9 @@ func (c *Config) Validate() error {
 	}
 	if c.DatabaseURL == "" {
 		return ErrDatabaseURLRequired
+	}
+	if len(c.AllowedOrigins) == 0 {
+		return ErrAllowedOriginsRequired
 	}
 	return nil
 }
