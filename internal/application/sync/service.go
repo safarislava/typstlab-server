@@ -3,6 +3,8 @@ package sync
 import (
 	"context"
 	"fmt"
+	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/google/uuid"
@@ -64,135 +66,184 @@ func (s *Service) Sync(ctx context.Context, projectID uuid.UUID, req *Request) (
 		return nil, fmt.Errorf("failed to fetch project files: %w", err)
 	}
 
-	filesByID, filesByName := s.buildLookupMaps(serverFiles)
-	var instructions []Instruction
-	clientIDs := make(map[uuid.UUID]bool)
+	matching, clientOnly, serverOnly := s.categorizeFiles(req.Files, serverFiles)
 
-	for _, clientFile := range req.Files {
-		clientIDs[clientFile.ID] = true
-
-		fileInstructions, err := s.processClientFile(ctx, clientFile, filesByID, filesByName)
-		if err != nil {
-			return nil, err
-		}
-		instructions = append(instructions, fileInstructions...)
+	matchingInstructions, err := s.processMatchingFiles(matching)
+	if err != nil {
+		return nil, err
 	}
 
-	missingInstructions := s.processMissingFiles(serverFiles, clientIDs)
-	instructions = append(instructions, missingInstructions...)
+	clientOnlyInstructions, err := s.processClientOnlyFiles(ctx, clientOnly, serverFiles)
+	if err != nil {
+		return nil, err
+	}
+
+	serverOnlyInstructions := s.processServerOnlyFiles(serverOnly)
+
+	instructions := slices.Concat(matchingInstructions, clientOnlyInstructions, serverOnlyInstructions)
 
 	return &Response{
 		Instructions: instructions,
 	}, nil
 }
 
-func (s *Service) processClientFile(ctx context.Context, clientFile FileRequest, filesByID map[uuid.UUID]domainFile.File, filesByName map[string]domainFile.File) ([]Instruction, error) {
-	if serverFile, exists := filesByID[clientFile.ID]; exists {
-		return s.processServerFileExists(clientFile, serverFile)
+type fileMatch struct {
+	client FileRequest
+	server domainFile.File
+}
+
+func (s *Service) categorizeFiles(clientFiles []FileRequest, serverFiles []domainFile.File) (
+	matching []*fileMatch,
+	clientOnly []FileRequest,
+	serverOnly []domainFile.File,
+) {
+	serverByID := make(map[uuid.UUID]domainFile.File, len(serverFiles))
+	for _, sf := range serverFiles {
+		serverByID[sf.ID()] = sf
 	}
 
-	isDeleted, err := s.repo.IsDeleted(ctx, clientFile.ID)
+	clientIDs := make(map[uuid.UUID]bool, len(clientFiles))
+	for _, cf := range clientFiles {
+		clientIDs[cf.ID] = true
+		if sf, exists := serverByID[cf.ID]; exists {
+			matching = append(matching, &fileMatch{client: cf, server: sf})
+		} else {
+			clientOnly = append(clientOnly, cf)
+		}
+	}
+
+	for _, sf := range serverFiles {
+		if !clientIDs[sf.ID()] {
+			serverOnly = append(serverOnly, sf)
+		}
+	}
+
+	return matching, clientOnly, serverOnly
+}
+
+func (s *Service) processMatchingFiles(matches []*fileMatch) ([]Instruction, error) {
+	var instructions []Instruction
+
+	for _, match := range matches {
+		matchInstructions, err := s.processSingleMatch(match)
+		if err != nil {
+			return nil, err
+		}
+		instructions = append(instructions, matchInstructions...)
+	}
+
+	return instructions, nil
+}
+
+func (s *Service) processSingleMatch(match *fileMatch) ([]Instruction, error) {
+	var instructions []Instruction
+
+	if match.client.Name != match.server.Name() {
+		instructions = append(instructions, Instruction{
+			Action:  ActionRename,
+			FileID:  match.client.ID,
+			NewName: match.server.Name(),
+		})
+	}
+
+	deltaInst, err := s.generateDeltaInstruction(match)
 	if err != nil {
-		return nil, fmt.Errorf("failed to check file deletion status: %w", err)
+		return nil, err
+	}
+	if deltaInst != nil {
+		instructions = append(instructions, *deltaInst)
 	}
 
-	if isDeleted {
-		return []Instruction{
-			{
-				Action: ActionDelete,
-				FileID: clientFile.ID,
-			},
-		}, nil
-	}
-
-	return s.processOfflineFile(clientFile, filesByName), nil
+	return instructions, nil
 }
 
-func (s *Service) processMissingFiles(serverFiles []domainFile.File, clientIDs map[uuid.UUID]bool) []Instruction {
-	var instructions []Instruction
-	for _, serverFile := range serverFiles {
-		if !clientIDs[serverFile.ID()] {
-			instructions = append(instructions, Instruction{
-				Action: ActionDownload,
-				FileID: serverFile.ID(),
-			})
-		}
-	}
-	return instructions
-}
-
-func (s *Service) buildLookupMaps(files []domainFile.File) (filesByID map[uuid.UUID]domainFile.File, filesByName map[string]domainFile.File) {
-	filesByID = make(map[uuid.UUID]domainFile.File)
-	filesByName = make(map[string]domainFile.File)
-	for _, serverFile := range files {
-		filesByID[serverFile.ID()] = serverFile
-		filesByName[serverFile.Name()] = serverFile
-	}
-	return filesByID, filesByName
-}
-
-func (s *Service) processOfflineFile(clientFile FileRequest, filesByName map[string]domainFile.File) []Instruction {
-	var instructions []Instruction
-	newName := clientFile.Name
-	if _, nameConflict := filesByName[clientFile.Name]; nameConflict {
-		ext := ""
-		base := clientFile.Name
-		if idx := strings.LastIndex(clientFile.Name, "."); idx != -1 {
-			base = clientFile.Name[:idx]
-			ext = clientFile.Name[idx:]
-		}
-		newName = base + "_conflict" + ext
+func (s *Service) generateDeltaInstruction(match *fileMatch) (*Instruction, error) {
+	if len(match.client.State) == 0 {
+		return nil, nil
 	}
 
-	if newName != clientFile.Name {
-		instructions = append(instructions, Instruction{
-			Action:  ActionRename,
-			FileID:  clientFile.ID,
-			NewName: newName,
-		})
+	typstFile, isTypst := match.server.(*domainFile.TypstFile)
+	if !isTypst {
+		return nil, nil
 	}
 
-	instructions = append(instructions, Instruction{
-		Action: ActionUpload,
-		FileID: clientFile.ID,
-	})
-
-	return instructions
-}
-
-func (s *Service) processServerFileExists(clientFile FileRequest, serverFile domainFile.File) ([]Instruction, error) {
-	var instructions []Instruction
-	if clientFile.Name != serverFile.Name() {
-		instructions = append(instructions, Instruction{
-			Action:  ActionRename,
-			FileID:  clientFile.ID,
-			NewName: serverFile.Name(),
-		})
-	}
-
-	if serverFile.Type() != domainFile.TypeTypst || len(clientFile.State) == 0 {
-		return instructions, nil
-	}
-
-	typstFile, ok := serverFile.(*domainFile.TypstFile)
-	if !ok {
-		return instructions, nil
-	}
-
-	delta, err := s.computeDelta(typstFile, clientFile.State)
+	delta, err := s.computeDelta(typstFile, match.client.State)
 	if err != nil {
 		return nil, err
 	}
 
-	if len(delta) > 0 {
-		instructions = append(instructions, Instruction{
-			Action: ActionApplyChanges,
-			FileID: clientFile.ID,
-			Delta:  delta,
-		})
+	if len(delta) == 0 {
+		return nil, nil
+	}
+
+	return &Instruction{
+		Action: ActionApplyChanges,
+		FileID: match.client.ID,
+		Delta:  delta,
+	}, nil
+}
+
+func (s *Service) processClientOnlyFiles(ctx context.Context, clientFiles []FileRequest, serverFiles []domainFile.File) ([]Instruction, error) {
+	existingNames := buildNameSet(serverFiles)
+	var instructions []Instruction
+
+	for _, cf := range clientFiles {
+		fileInstructions, err := s.processSingleClientOnlyFile(ctx, cf, existingNames)
+		if err != nil {
+			return nil, err
+		}
+		instructions = append(instructions, fileInstructions...)
 	}
 
 	return instructions, nil
+}
+
+func (s *Service) processSingleClientOnlyFile(ctx context.Context, cf FileRequest, existingNames map[string]bool) ([]Instruction, error) {
+	isDeleted, err := s.repo.IsDeleted(ctx, cf.ID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to check deletion status for %s: %w", cf.ID, err)
+	}
+	if isDeleted {
+		return []Instruction{{Action: ActionDelete, FileID: cf.ID}}, nil
+	}
+
+	return s.createUploadInstructions(cf, existingNames), nil
+}
+
+func (s *Service) createUploadInstructions(cf FileRequest, existingNames map[string]bool) []Instruction {
+	var instructions []Instruction
+
+	if resolvedName := resolveConflictName(cf.Name, existingNames); resolvedName != cf.Name {
+		instructions = append(instructions, Instruction{
+			Action:  ActionRename,
+			FileID:  cf.ID,
+			NewName: resolvedName,
+		})
+	}
+
+	return append(instructions, Instruction{
+		Action: ActionUpload,
+		FileID: cf.ID,
+	})
+}
+
+func buildNameSet(files []domainFile.File) map[string]bool {
+	names := make(map[string]bool, len(files))
+	for _, f := range files {
+		names[f.Name()] = true
+	}
+	return names
+}
+
+func (s *Service) processServerOnlyFiles(serverFiles []domainFile.File) []Instruction {
+	instructions := make([]Instruction, 0, len(serverFiles))
+	for _, sf := range serverFiles {
+		instructions = append(instructions, Instruction{
+			Action: ActionDownload,
+			FileID: sf.ID(),
+		})
+	}
+	return instructions
 }
 
 func (s *Service) computeDelta(typstFile *domainFile.TypstFile, clientState []byte) ([]byte, error) {
@@ -209,4 +260,14 @@ func (s *Service) computeDelta(typstFile *domainFile.TypstFile, clientState []by
 	}
 
 	return crdt.EncodeStateAsUpdateV1(doc, stateVector), nil
+}
+
+func resolveConflictName(name string, existingNames map[string]bool) string {
+	if !existingNames[name] {
+		return name
+	}
+
+	ext := filepath.Ext(name)
+	base := strings.TrimSuffix(name, ext)
+	return fmt.Sprintf("%s_conflict%s", base, ext)
 }
