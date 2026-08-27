@@ -2,7 +2,6 @@ package http
 
 import (
 	"context"
-	"errors"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -72,7 +71,7 @@ func (m *AccessMiddleware) findFile(ctx context.Context, fileID uuid.UUID) (doma
 	if bf, err := m.fileService.GetBinaryFile(ctx, fileID); err == nil {
 		return bf, nil
 	}
-	return nil, errors.New("file not found")
+	return nil, domainFile.ErrFileNotFound
 }
 
 func (m *AccessMiddleware) FileAccess(next http.Handler) http.Handler {

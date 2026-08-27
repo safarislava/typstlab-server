@@ -2,7 +2,6 @@ package persistence
 
 import (
 	"context"
-	"errors"
 	"sync"
 
 	"github.com/google/uuid"
@@ -39,7 +38,7 @@ func (r *MemoryUserRepository) FindByEmail(_ context.Context, email string) (*do
 		}
 	}
 
-	return nil, errors.New("user not found")
+	return nil, domain.ErrUserNotFound
 }
 
 func (r *MemoryUserRepository) FindByID(_ context.Context, id uuid.UUID) (*domain.User, error) {
@@ -48,7 +47,7 @@ func (r *MemoryUserRepository) FindByID(_ context.Context, id uuid.UUID) (*domai
 
 	u, ok := r.store[id.String()]
 	if !ok {
-		return nil, errors.New("user not found")
+		return nil, domain.ErrUserNotFound
 	}
 
 	return u, nil

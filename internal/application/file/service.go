@@ -98,7 +98,7 @@ func (s *Service) GetTypstFile(ctx context.Context, fileID uuid.UUID) (*domainFi
 func (s *Service) GetBinaryFile(ctx context.Context, fileID uuid.UUID) (*domainFile.BinaryFile, error) {
 	f, err := s.repo.FindBinaryFileByID(ctx, fileID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to find typst file: %w", err)
+		return nil, fmt.Errorf("failed to find binary file: %w", err)
 	}
 
 	return f, nil
@@ -128,7 +128,7 @@ func (s *Service) ApplyFileChanges(ctx context.Context, req ApplyFileChangesRequ
 
 func (s *Service) DeleteFile(ctx context.Context, fileID uuid.UUID) error {
 	if err := s.repo.DeleteFile(ctx, fileID); err != nil {
-		return fmt.Errorf("failed to delete typst file: %w", err)
+		return fmt.Errorf("failed to delete file: %w", err)
 	}
 
 	return nil

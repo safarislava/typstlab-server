@@ -62,15 +62,20 @@ func NewService(
 	}
 }
 
+var (
+	ErrInvalidCredentials  = errors.New("invalid email or password")
+	ErrInvalidRefreshToken = errors.New("invalid or expired refresh token")
+)
+
 func (s *Service) Login(ctx context.Context, req LoginRequest) (*LoginResponse, error) {
 	u, err := s.userService.GetByEmail(ctx, req.Email)
 	if err != nil {
-		return nil, errors.New("invalid email or password")
+		return nil, ErrInvalidCredentials
 	}
 
 	err = s.hasher.Compare(u.PasswordHash(), req.Password)
 	if err != nil {
-		return nil, errors.New("invalid email or password")
+		return nil, ErrInvalidCredentials
 	}
 
 	t, err := s.tokenService.Generate(u.ID(), u.Role())
@@ -92,17 +97,17 @@ func (s *Service) Login(ctx context.Context, req LoginRequest) (*LoginResponse, 
 func (s *Service) Refresh(ctx context.Context, req RefreshRequest) (*RefreshResponse, error) {
 	session, err := s.refreshTokenService.Get(ctx, req.RefreshToken)
 	if err != nil {
-		return nil, errors.New("invalid or expired refresh token")
+		return nil, ErrInvalidRefreshToken
 	}
 
 	if session.IsExpired() {
 		_ = s.refreshTokenService.Invalidate(ctx, req.RefreshToken)
-		return nil, errors.New("invalid or expired refresh token")
+		return nil, ErrInvalidRefreshToken
 	}
 
 	u, err := s.userService.GetByID(ctx, session.UserID())
 	if err != nil {
-		return nil, errors.New("user not found")
+		return nil, domainUser.ErrUserNotFound
 	}
 
 	t, err := s.tokenService.Generate(u.ID(), u.Role())
