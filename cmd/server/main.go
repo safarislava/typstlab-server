@@ -11,7 +11,11 @@ import (
 )
 
 func main() {
-	cfg := config.Load("configs/config.json")
+	cfg, err := config.Load("configs/config.json")
+	if err != nil {
+		slog.Error("Configuration error", slog.Any("error", err))
+		os.Exit(1)
+	}
 
 	if err := postgres.RunMigrations(cfg.DatabaseURL); err != nil {
 		slog.Error("Migration failure", slog.Any("error", err))
