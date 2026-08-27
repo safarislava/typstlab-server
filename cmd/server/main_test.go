@@ -15,13 +15,14 @@ import (
 	yjs "github.com/reearth/ygo/crdt"
 
 	"github.com/safarislava/typstlab-server/internal/infrastructure/config"
+	"github.com/safarislava/typstlab-server/internal/infrastructure/di"
 )
 
 const typstlabLink = "https://typstlab.safarislava.tech"
 
 func setupTestRouter() *chi.Mux {
 	cfg := config.Load("../../configs/config.json")
-	return setupRouter(cfg)
+	return di.New(cfg).Router()
 }
 
 func registerAndLogin(t *testing.T, router http.Handler, email, password string) string {

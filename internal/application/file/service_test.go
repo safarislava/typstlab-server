@@ -377,7 +377,6 @@ func TestService_ApplyFileChanges(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			runApplyFileChangesSubtest(t, fileID, req, b, tt.findErr, tt.mergeErr, tt.saveErr, tt.wantErr, tt.checkFunc)
@@ -446,7 +445,6 @@ func TestService_DeleteFile(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			repo := newMockRepository()
