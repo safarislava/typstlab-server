@@ -1,10 +1,15 @@
 package di
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/google/uuid"
 
 	"github.com/safarislava/typstlab-server/internal/infrastructure/config"
 )
@@ -13,6 +18,7 @@ const (
 	testDatabaseURL = "postgres://user:pass@localhost:5432/db"
 	testJWTSecret   = "test-secret"
 	testOrigin      = "http://localhost:3000"
+	testAuthJSON    = `{"email":"di_user@example.com","password":"password123"}`
 )
 
 func newTestConfig() *config.Config {
@@ -141,5 +147,49 @@ func TestContainer_RouterServesRequests(t *testing.T) {
 
 	if rr.Body.String() != "OK" {
 		t.Errorf("Expected body 'OK', got %q", rr.Body.String())
+	}
+}
+
+func TestContainer_RouterAuthAndProjectFlow(t *testing.T) {
+	t.Parallel()
+
+	c := New(newTestConfig())
+	router := c.Router()
+
+	// Register
+	regReq := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/register", bytes.NewBufferString(testAuthJSON))
+	regRr := httptest.NewRecorder()
+	router.ServeHTTP(regRr, regReq)
+
+	if regRr.Code != http.StatusCreated {
+		t.Fatalf("Register failed: status %d", regRr.Code)
+	}
+
+	// Login
+	loginReq := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/login", bytes.NewBufferString(testAuthJSON))
+	loginRr := httptest.NewRecorder()
+	router.ServeHTTP(loginRr, loginReq)
+
+	if loginRr.Code != http.StatusOK {
+		t.Fatalf("Login failed: status %d", loginRr.Code)
+	}
+
+	var loginResp map[string]string
+	if err := json.NewDecoder(loginRr.Body).Decode(&loginResp); err != nil {
+		t.Fatalf("Failed to decode login response: %v", err)
+	}
+
+	token := loginResp["token"]
+
+	// Create Project
+	projID := uuid.New().String()
+	projBody := fmt.Sprintf(`{"id":%q,"name":"DI Project"}`, projID)
+	projReq := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/projects", bytes.NewBufferString(projBody))
+	projReq.Header.Set("Authorization", "Bearer "+token)
+	projRr := httptest.NewRecorder()
+	router.ServeHTTP(projRr, projReq)
+
+	if projRr.Code != http.StatusCreated {
+		t.Errorf("Create project failed: status %d, body %s", projRr.Code, projRr.Body.String())
 	}
 }
