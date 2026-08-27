@@ -38,26 +38,44 @@ func assertSingleton[T comparable](t *testing.T, name string, first, second T) {
 	}
 }
 
+func assertNil[T comparable](t *testing.T, name string, val T) {
+	t.Helper()
+	var zero T
+	if val != zero {
+		t.Fatalf("%s should be nil initially", name)
+	}
+}
+
 func TestContainer_InitialStateIsNil(t *testing.T) {
 	t.Parallel()
 
 	c := New(newTestConfig())
 
-	fields := []any{
-		c.projectRepo, c.fileRepo, c.userRepo, c.sessionRepo,
-		c.hasher, c.tokenService, c.yjsMerger,
-		c.projectService, c.fileService, c.syncService,
-		c.userService, c.sessionService, c.authService,
-		c.projectHandler, c.fileHandler, c.syncHandler,
-		c.userHandler, c.authHandler, c.authMiddleware, c.accessMiddleware,
-		c.router,
-	}
+	assertNil(t, "projectRepo", c.projectRepo)
+	assertNil(t, "fileRepo", c.fileRepo)
+	assertNil(t, "userRepo", c.userRepo)
+	assertNil(t, "sessionRepo", c.sessionRepo)
 
-	for _, field := range fields {
-		if field != nil {
-			t.Fatal("Components should not be initialized before being requested")
-		}
-	}
+	assertNil(t, "hasher", c.hasher)
+	assertNil(t, "tokenService", c.tokenService)
+	assertNil(t, "yjsMerger", c.yjsMerger)
+
+	assertNil(t, "projectService", c.projectService)
+	assertNil(t, "fileService", c.fileService)
+	assertNil(t, "syncService", c.syncService)
+	assertNil(t, "userService", c.userService)
+	assertNil(t, "sessionService", c.sessionService)
+	assertNil(t, "authService", c.authService)
+
+	assertNil(t, "projectHandler", c.projectHandler)
+	assertNil(t, "fileHandler", c.fileHandler)
+	assertNil(t, "syncHandler", c.syncHandler)
+	assertNil(t, "userHandler", c.userHandler)
+	assertNil(t, "authHandler", c.authHandler)
+	assertNil(t, "authMiddleware", c.authMiddleware)
+	assertNil(t, "accessMiddleware", c.accessMiddleware)
+
+	assertNil(t, "router", c.router)
 }
 
 func TestContainer_Config(t *testing.T) {
