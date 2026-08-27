@@ -10,7 +10,7 @@ on:
 
 jobs:
   analyze:
-    name: CodeQL Security Scan
+    name: CodeQL Security & Quality Scan
     runs-on: ubuntu-latest
     permissions:
       actions: read
@@ -39,6 +39,7 @@ jobs:
         uses: github/codeql-action/init@v3
         with:
           languages: ${{ matrix.language }}
+          queries: security-and-quality
           build-mode: ${{ matrix.build-mode }}
 
       - name: Perform CodeQL Analysis
@@ -46,6 +47,7 @@ jobs:
         uses: github/codeql-action/analyze@v3
         with:
           category: "/language:${{ matrix.language }}"
+          output: '../results'
 
       - name: Post CodeQL summary to PR
         if: github.event_name == 'pull_request' && always()
@@ -53,20 +55,76 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
+            const fs = require('fs');
+            const path = require('path');
+
             const outcome = '${{ steps.analyze.outcome }}';
             const isSuccess = outcome === 'success';
-            const statusEmoji = isSuccess ? '✅' : '❌';
-            const statusText = isSuccess 
-              ? 'Проверка безопасности CodeQL успешно пройдена: критических уязвимостей не обнаружено.' 
-              : 'Проверка безопасности CodeQL завершилась с ошибкой. Проверьте логи запуска для устранения проблем.';
-            
-            const body = `### ${statusEmoji} CodeQL Security Scan
-            
-            **Статус:** ${statusText}
-            
-            - **Язык:** Go
-            - **Коммит:** \`${{ github.sha }}\`
-            - **Детали выполнения:** [Просмотр логов](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})`;
+            let findings = [];
+            let counts = { error: 0, warning: 0, note: 0 };
+
+            // Look for generated SARIF report file
+            const resultsDir = path.resolve('../results');
+            if (fs.existsSync(resultsDir)) {
+              const sarifFiles = fs.readdirSync(resultsDir).filter(f => f.endsWith('.sarif'));
+              for (const file of sarifFiles) {
+                try {
+                  const content = JSON.parse(fs.readFileSync(path.join(resultsDir, file), 'utf8'));
+                  for (const run of (content.runs || [])) {
+                    for (const res of (run.results || [])) {
+                      const level = res.level || 'warning';
+                      if (counts[level] !== undefined) counts[level]++;
+                      else counts.warning++;
+
+                      const ruleId = res.ruleId || 'N/A';
+                      const message = res.message?.text || 'No description';
+                      const loc = res.locations?.[0]?.physicalLocation;
+                      const filePath = loc?.artifactLocation?.uri || '';
+                      const line = loc?.region?.startLine || '';
+                      const locationStr = filePath ? (line ? `\`${filePath}:${line}\`` : `\`${filePath}\``) : 'N/A';
+
+                      findings.push({
+                        level,
+                        ruleId,
+                        message: message.replace(/\n/g, ' ').slice(0, 150),
+                        location: locationStr
+                      });
+                    }
+                  }
+                } catch (e) {
+                  console.error('Failed to parse SARIF file:', file, e);
+                }
+              }
+            }
+
+            const totalIssues = findings.length;
+            const hasErrors = counts.error > 0;
+            const statusEmoji = (isSuccess && !hasErrors) ? '✅' : '❌';
+
+            let body = `### ${statusEmoji} CodeQL Security & Quality Scan\n\n`;
+            body += `- **Статус запуска:** ${isSuccess ? 'Успешно' : 'Ошибка'}\n`;
+            body += `- **Коммит:** \`${{ github.sha }}\`\n`;
+            body += `- **Набор правил:** \`security-and-quality\` (безопасность, надежность, качество кода)\n`;
+            body += `- **Найдено проблем:** ${totalIssues} (🔴 Ошибки: ${counts.error}, 🟡 Предупреждения: ${counts.warning}, ℹ️ Замечания: ${counts.note})\n\n`;
+
+            if (totalIssues === 0) {
+              body += `> 🎉 **Отлично!** CodeQL не обнаружил уязвимостей и проблем качества кода.\n\n`;
+            } else {
+              body += `#### 📋 Список найденных проблем:\n\n`;
+              body += `| Уровень | Правило | Описание | Файл и строка |\n`;
+              body += `| :--- | :--- | :--- | :--- |\n`;
+
+              for (const f of findings.slice(0, 50)) {
+                const icon = f.level === 'error' ? '🔴 Error' : (f.level === 'note' ? 'ℹ️ Note' : '🟡 Warning');
+                body += `| ${icon} | \`${f.ruleId}\` | ${f.message} | ${f.location} |\n`;
+              }
+
+              if (findings.length > 50) {
+                body += `\n*Показаны первые 50 из ${findings.length} проблем. Полный отчет доступен в Security Alerts репозитория.*\n`;
+              }
+            }
+
+            body += `\n[🔍 Просмотр логов выполнения](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})`;
 
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner,
@@ -74,7 +132,7 @@ jobs:
               issue_number: context.issue.number,
             });
             
-            const botComment = comments.find(c => c.body.includes('CodeQL Security Scan'));
+            const botComment = comments.find(c => c.body.includes('CodeQL Security & Quality Scan'));
             
             if (botComment) {
               await github.rest.issues.updateComment({
