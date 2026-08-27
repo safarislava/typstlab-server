@@ -21,10 +21,15 @@ type RegisterResponse struct {
 	Role  domain.Role
 }
 
-type UseCase interface {
-	Register(ctx context.Context, req RegisterRequest) (*RegisterResponse, error)
-	GetByEmail(ctx context.Context, email string) (*domain.User, error)
-	GetByID(ctx context.Context, id uuid.UUID) (*domain.User, error)
+type Repository interface {
+	Save(ctx context.Context, u *domain.User) error
+	FindByEmail(ctx context.Context, email string) (*domain.User, error)
+	FindByID(ctx context.Context, id uuid.UUID) (*domain.User, error)
+}
+
+type PasswordHasher interface {
+	Hash(password string) (string, error)
+	Compare(hashedPassword, password string) error
 }
 
 type Service struct {
@@ -32,7 +37,7 @@ type Service struct {
 	hasher PasswordHasher
 }
 
-func NewService(repo Repository, hasher PasswordHasher) UseCase {
+func NewService(repo Repository, hasher PasswordHasher) *Service {
 	return &Service{
 		repo:   repo,
 		hasher: hasher,

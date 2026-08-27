@@ -1,6 +1,7 @@
-package http
+package auth
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 
@@ -10,12 +11,18 @@ import (
 
 const refreshTokenCookieName = "refresh_token"
 
-type AuthHandler struct {
-	authService auth.UseCase
+type Service interface {
+	Login(ctx context.Context, req auth.LoginRequest) (*auth.LoginResponse, error)
+	Refresh(ctx context.Context, req auth.RefreshRequest) (*auth.RefreshResponse, error)
+	Logout(ctx context.Context, refreshToken tokenDomain.Token) error
 }
 
-func NewAuthHandler(authService auth.UseCase) *AuthHandler {
-	return &AuthHandler{
+type Handler struct {
+	authService Service
+}
+
+func NewHandler(authService Service) *Handler {
+	return &Handler{
 		authService: authService,
 	}
 }
@@ -29,7 +36,7 @@ type JSONLoginResponse struct {
 	Token string `json:"token"`
 }
 
-func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	var jsonReq jsonLoginRequest
 	if err := json.NewDecoder(r.Body).Decode(&jsonReq); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
@@ -51,7 +58,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	h.writeJSON(w, http.StatusOK, JSONLoginResponse{Token: resp.AccessToken.Value()})
 }
 
-func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 	cookie, err := r.Cookie(refreshTokenCookieName)
 	if err != nil {
 		h.writeError(w, http.StatusBadRequest, "Missing refresh token cookie")
@@ -76,7 +83,7 @@ func (h *AuthHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 	h.writeJSON(w, http.StatusOK, JSONLoginResponse{Token: resp.AccessToken.Value()})
 }
 
-func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 	cookie, err := r.Cookie(refreshTokenCookieName)
 	if err == nil {
 		if rt, err := tokenDomain.NewToken(cookie.Value); err == nil {
@@ -88,7 +95,7 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (h *AuthHandler) setSessionCookie(w http.ResponseWriter, value string, maxAge int) {
+func (h *Handler) setSessionCookie(w http.ResponseWriter, value string, maxAge int) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     refreshTokenCookieName,
 		Value:    value,
@@ -100,13 +107,13 @@ func (h *AuthHandler) setSessionCookie(w http.ResponseWriter, value string, maxA
 	})
 }
 
-func (h *AuthHandler) writeJSON(w http.ResponseWriter, status int, data any) {
+func (h *Handler) writeJSON(w http.ResponseWriter, status int, data any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(data)
 }
 
-func (h *AuthHandler) writeError(w http.ResponseWriter, status int, message string) {
+func (h *Handler) writeError(w http.ResponseWriter, status int, message string) {
 	w.WriteHeader(status)
 	_, _ = w.Write([]byte(message))
 }

@@ -1,4 +1,4 @@
-package http
+package middleware
 
 import (
 	"context"
@@ -11,8 +11,6 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
-	fileApp "github.com/safarislava/typstlab-server/internal/application/file"
-	projectApp "github.com/safarislava/typstlab-server/internal/application/project"
 	domainFile "github.com/safarislava/typstlab-server/internal/domain/file"
 	domainProject "github.com/safarislava/typstlab-server/internal/domain/project"
 )
@@ -26,7 +24,6 @@ const (
 )
 
 type mockProjectUseCaseForAccess struct {
-	projectApp.UseCase
 	getFunc func(ctx context.Context, projectID uuid.UUID) (*domainProject.Project, error)
 }
 
@@ -38,7 +35,6 @@ func (m *mockProjectUseCaseForAccess) Get(ctx context.Context, projectID uuid.UU
 }
 
 type mockFileUseCaseForAccess struct {
-	fileApp.UseCase
 	getTypstFileFunc  func(ctx context.Context, fileID uuid.UUID) (*domainFile.TypstFile, error)
 	getBinaryFileFunc func(ctx context.Context, fileID uuid.UUID) (*domainFile.BinaryFile, error)
 }

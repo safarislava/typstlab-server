@@ -13,17 +13,18 @@ import (
 	domainToken "github.com/safarislava/typstlab-server/internal/domain/token"
 )
 
-type UseCase interface {
-	Create(ctx context.Context, userID uuid.UUID, duration time.Duration) (domain.Session, error)
-	Get(ctx context.Context, token domainToken.Token) (domain.Session, error)
-	Invalidate(ctx context.Context, token domainToken.Token) error
+type Repository interface {
+	Save(ctx context.Context, s domain.Session) error
+	FindByToken(ctx context.Context, t domainToken.Token) (domain.Session, error)
+	Delete(ctx context.Context, t domainToken.Token) error
+	DeleteByUserID(ctx context.Context, userID uuid.UUID) error
 }
 
 type Service struct {
 	repo Repository
 }
 
-func NewService(repo Repository) UseCase {
+func NewService(repo Repository) *Service {
 	return &Service{repo: repo}
 }
 

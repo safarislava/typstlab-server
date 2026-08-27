@@ -1,4 +1,4 @@
-package http
+package middleware
 
 import (
 	"context"
@@ -7,8 +7,6 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 
-	fileApp "github.com/safarislava/typstlab-server/internal/application/file"
-	projectApp "github.com/safarislava/typstlab-server/internal/application/project"
 	domainFile "github.com/safarislava/typstlab-server/internal/domain/file"
 	domainProject "github.com/safarislava/typstlab-server/internal/domain/project"
 )
@@ -18,12 +16,21 @@ const (
 	fileContextKey    contextKey = "file"
 )
 
-type AccessMiddleware struct {
-	projectService projectApp.UseCase
-	fileService    fileApp.UseCase
+type ProjectService interface {
+	Get(ctx context.Context, projectID uuid.UUID) (*domainProject.Project, error)
 }
 
-func NewAccessMiddleware(projectService projectApp.UseCase, fileService fileApp.UseCase) *AccessMiddleware {
+type FileService interface {
+	GetTypstFile(ctx context.Context, fileID uuid.UUID) (*domainFile.TypstFile, error)
+	GetBinaryFile(ctx context.Context, fileID uuid.UUID) (*domainFile.BinaryFile, error)
+}
+
+type AccessMiddleware struct {
+	projectService ProjectService
+	fileService    FileService
+}
+
+func NewAccessMiddleware(projectService ProjectService, fileService FileService) *AccessMiddleware {
 	return &AccessMiddleware{
 		projectService: projectService,
 		fileService:    fileService,
@@ -120,7 +127,15 @@ func ProjectFromContext(ctx context.Context) (*domainProject.Project, bool) {
 	return p, ok
 }
 
+func WithProject(ctx context.Context, p *domainProject.Project) context.Context {
+	return context.WithValue(ctx, projectContextKey, p)
+}
+
 func FileFromContext(ctx context.Context) (domainFile.File, bool) {
 	f, ok := ctx.Value(fileContextKey).(domainFile.File)
 	return f, ok
+}
+
+func WithFile(ctx context.Context, f domainFile.File) context.Context {
+	return context.WithValue(ctx, fileContextKey, f)
 }

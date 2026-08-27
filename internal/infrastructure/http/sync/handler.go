@@ -1,6 +1,7 @@
-package http
+package sync
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 
@@ -8,14 +9,19 @@ import (
 
 	syncApp "github.com/safarislava/typstlab-server/internal/application/sync"
 	domainFile "github.com/safarislava/typstlab-server/internal/domain/file"
+	"github.com/safarislava/typstlab-server/internal/infrastructure/http/middleware"
 )
 
-type SyncHandler struct {
-	syncService syncApp.UseCase
+type Service interface {
+	Sync(ctx context.Context, projectID uuid.UUID, req *syncApp.Request) (*syncApp.Response, error)
 }
 
-func NewSyncHandler(syncService syncApp.UseCase) *SyncHandler {
-	return &SyncHandler{
+type Handler struct {
+	syncService Service
+}
+
+func NewHandler(syncService Service) *Handler {
+	return &Handler{
 		syncService: syncService,
 	}
 }
@@ -42,8 +48,8 @@ type JSONSyncResponse struct {
 	Instructions []JSONInstructionResponse `json:"instructions"`
 }
 
-func (h *SyncHandler) Sync(w http.ResponseWriter, r *http.Request) {
-	p, ok := ProjectFromContext(r.Context())
+func (h *Handler) Sync(w http.ResponseWriter, r *http.Request) {
+	p, ok := middleware.ProjectFromContext(r.Context())
 	if !ok {
 		w.WriteHeader(http.StatusInternalServerError)
 		_, _ = w.Write([]byte("Project not found in context"))

@@ -1,4 +1,4 @@
-package http
+package user
 
 import (
 	"bytes"
@@ -8,21 +8,40 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/safarislava/typstlab-server/internal/application/user"
+	"github.com/google/uuid"
+
+	appUser "github.com/safarislava/typstlab-server/internal/application/user"
 	domainUser "github.com/safarislava/typstlab-server/internal/domain/user"
 )
+
+type mockUserService struct {
+	registerFunc func(ctx context.Context, req appUser.RegisterRequest) (*appUser.RegisterResponse, error)
+}
+
+func (m *mockUserService) Register(ctx context.Context, req appUser.RegisterRequest) (*appUser.RegisterResponse, error) {
+	if m.registerFunc != nil {
+		return m.registerFunc(ctx, req)
+	}
+	return nil, errors.New("registration failed")
+}
 
 func TestUserHandler_Register(t *testing.T) {
 	t.Parallel()
 
-	repo := &mockUserRepo{
-		findByEmailFunc: func(ctx context.Context, email string) (*domainUser.User, error) {
-			return nil, errors.New("not found")
+	userID := uuid.New()
+	svc := &mockUserService{
+		registerFunc: func(ctx context.Context, req appUser.RegisterRequest) (*appUser.RegisterResponse, error) {
+			if req.Email == "new@example.com" {
+				return &appUser.RegisterResponse{
+					ID:    userID,
+					Email: req.Email,
+					Role:  domainUser.RoleUser,
+				}, nil
+			}
+			return nil, errors.New("invalid email")
 		},
 	}
-	hasher := &mockUserHasher{}
-	svc := user.NewService(repo, hasher)
-	handler := NewUserHandler(svc)
+	handler := NewHandler(svc)
 
 	// Case 1: Invalid JSON
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/register", bytes.NewBufferString("{invalid-json"))

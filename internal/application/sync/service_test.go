@@ -9,12 +9,10 @@ import (
 	"github.com/google/uuid"
 	"github.com/reearth/ygo/crdt"
 
-	fileApp "github.com/safarislava/typstlab-server/internal/application/file"
 	domainFile "github.com/safarislava/typstlab-server/internal/domain/file"
 )
 
 type mockFileRepository struct {
-	fileApp.Repository
 	files        []domainFile.File
 	deletedFiles map[uuid.UUID]bool
 	findErr      error

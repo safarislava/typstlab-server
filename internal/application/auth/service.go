@@ -8,12 +8,31 @@ import (
 
 	"github.com/google/uuid"
 
-	sessionApp "github.com/safarislava/typstlab-server/internal/application/session"
-	userApp "github.com/safarislava/typstlab-server/internal/application/user"
 	sessionDomain "github.com/safarislava/typstlab-server/internal/domain/session"
 	tokenDomain "github.com/safarislava/typstlab-server/internal/domain/token"
 	domainUser "github.com/safarislava/typstlab-server/internal/domain/user"
 )
+
+type UserService interface {
+	GetByEmail(ctx context.Context, email string) (*domainUser.User, error)
+	GetByID(ctx context.Context, id uuid.UUID) (*domainUser.User, error)
+}
+
+type SessionService interface {
+	Create(ctx context.Context, userID uuid.UUID, duration time.Duration) (sessionDomain.Session, error)
+	Get(ctx context.Context, token tokenDomain.Token) (sessionDomain.Session, error)
+	Invalidate(ctx context.Context, token tokenDomain.Token) error
+}
+
+type TokenService interface {
+	Generate(userID uuid.UUID, role domainUser.Role) (tokenDomain.Token, error)
+	Validate(t tokenDomain.Token) (uuid.UUID, domainUser.Role, error)
+}
+
+type PasswordHasher interface {
+	Hash(password string) (string, error)
+	Compare(hashedPassword, password string) error
+}
 
 type LoginRequest struct {
 	Email    string
@@ -34,26 +53,19 @@ type RefreshResponse struct {
 	RefreshToken sessionDomain.Session
 }
 
-type UseCase interface {
-	Login(ctx context.Context, req LoginRequest) (*LoginResponse, error)
-	Refresh(ctx context.Context, req RefreshRequest) (*RefreshResponse, error)
-	Logout(ctx context.Context, refreshToken tokenDomain.Token) error
-	Authorize(t tokenDomain.Token) (uuid.UUID, domainUser.Role, error)
-}
-
 type Service struct {
-	userService         userApp.UseCase
-	refreshTokenService sessionApp.UseCase
+	userService         UserService
+	refreshTokenService SessionService
 	tokenService        TokenService
 	hasher              PasswordHasher
 }
 
 func NewService(
-	userService userApp.UseCase,
-	refreshTokenService sessionApp.UseCase,
+	userService UserService,
+	refreshTokenService SessionService,
 	tokenService TokenService,
 	hasher PasswordHasher,
-) UseCase {
+) *Service {
 	return &Service{
 		userService:         userService,
 		refreshTokenService: refreshTokenService,

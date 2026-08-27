@@ -1,4 +1,4 @@
-package http
+package middleware
 
 import (
 	"context"
@@ -9,45 +9,26 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/safarislava/typstlab-server/internal/application/auth"
-	sessionApp "github.com/safarislava/typstlab-server/internal/application/session"
-	"github.com/safarislava/typstlab-server/internal/application/user"
 	"github.com/safarislava/typstlab-server/internal/domain/token"
 	domainUser "github.com/safarislava/typstlab-server/internal/domain/user"
 )
 
-type mockTokenService struct {
-	validateFunc func(t token.Token) (uuid.UUID, domainUser.Role, error)
+type mockAuthService struct {
+	authorizeFunc func(t token.Token) (uuid.UUID, domainUser.Role, error)
 }
 
-func (m *mockTokenService) Generate(uuid.UUID, domainUser.Role) (token.Token, error) {
-	return token.Token{}, nil
-}
-
-func (m *mockTokenService) Validate(t token.Token) (uuid.UUID, domainUser.Role, error) {
-	if m.validateFunc != nil {
-		return m.validateFunc(t)
+func (m *mockAuthService) Authorize(t token.Token) (uuid.UUID, domainUser.Role, error) {
+	if m.authorizeFunc != nil {
+		return m.authorizeFunc(t)
 	}
-	return uuid.Nil, "", errors.New("invalid")
-}
-
-func setupTestMiddleware(tokenSvc *mockTokenService) *AuthMiddleware {
-	userRepo := &mockUserRepo{}
-	hasher := &mockUserHasher{}
-	rtRepo := &mockUserSessionRepo{}
-
-	userSvc := user.NewService(userRepo, hasher)
-	rtSvc := sessionApp.NewService(rtRepo)
-	authSvc := auth.NewService(userSvc, rtSvc, tokenSvc, hasher)
-
-	return NewAuthMiddleware(authSvc)
+	return uuid.Nil, "", errors.New("unauthorized")
 }
 
 func TestAuthMiddleware_Authenticate_NoAuthHeader(t *testing.T) {
 	t.Parallel()
 
-	tokenSvc := &mockTokenService{}
-	mw := setupTestMiddleware(tokenSvc)
+	authSvc := &mockAuthService{}
+	mw := NewAuthMiddleware(authSvc)
 
 	var ctxUserID uuid.UUID
 	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -65,8 +46,8 @@ func TestAuthMiddleware_Authenticate_NoAuthHeader(t *testing.T) {
 func TestAuthMiddleware_Authenticate_InvalidHeader(t *testing.T) {
 	t.Parallel()
 
-	tokenSvc := &mockTokenService{}
-	mw := setupTestMiddleware(tokenSvc)
+	authSvc := &mockAuthService{}
+	mw := NewAuthMiddleware(authSvc)
 
 	var ctxUserID uuid.UUID
 	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -85,12 +66,12 @@ func TestAuthMiddleware_Authenticate_InvalidHeader(t *testing.T) {
 func TestAuthMiddleware_Authenticate_InvalidToken(t *testing.T) {
 	t.Parallel()
 
-	tokenSvc := &mockTokenService{
-		validateFunc: func(t token.Token) (uuid.UUID, domainUser.Role, error) {
+	authSvc := &mockAuthService{
+		authorizeFunc: func(t token.Token) (uuid.UUID, domainUser.Role, error) {
 			return uuid.Nil, "", errors.New("invalid token")
 		},
 	}
-	mw := setupTestMiddleware(tokenSvc)
+	mw := NewAuthMiddleware(authSvc)
 
 	var ctxUserID uuid.UUID
 	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -112,15 +93,15 @@ func TestAuthMiddleware_Authenticate_ValidToken(t *testing.T) {
 	userID := uuid.New()
 	role := domainUser.RoleUser
 
-	tokenSvc := &mockTokenService{
-		validateFunc: func(t token.Token) (uuid.UUID, domainUser.Role, error) {
+	authSvc := &mockAuthService{
+		authorizeFunc: func(t token.Token) (uuid.UUID, domainUser.Role, error) {
 			if t.Value() == "valid-token" {
 				return userID, role, nil
 			}
 			return uuid.Nil, "", errors.New("invalid token")
 		},
 	}
-	mw := setupTestMiddleware(tokenSvc)
+	mw := NewAuthMiddleware(authSvc)
 
 	var ctxUserID uuid.UUID
 	var ctxRole domainUser.Role

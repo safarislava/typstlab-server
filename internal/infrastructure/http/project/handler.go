@@ -1,21 +1,27 @@
-package http
+package project
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"time"
 
 	"github.com/google/uuid"
 
-	application "github.com/safarislava/typstlab-server/internal/application/project"
+	projectApp "github.com/safarislava/typstlab-server/internal/application/project"
+	"github.com/safarislava/typstlab-server/internal/infrastructure/http/middleware"
 )
 
-type ProjectHandler struct {
-	service application.UseCase
+type Service interface {
+	Create(ctx context.Context, req projectApp.CreateRequest) (*projectApp.CreateResponse, error)
 }
 
-func NewProjectHandler(service application.UseCase) *ProjectHandler {
-	return &ProjectHandler{
+type Handler struct {
+	service Service
+}
+
+func NewHandler(service Service) *Handler {
+	return &Handler{
 		service: service,
 	}
 }
@@ -31,7 +37,7 @@ type JSONCreateResponse struct {
 	UpdatedAt string `json:"updated_at"`
 }
 
-func newJSONCreateResponse(response *application.CreateResponse) JSONCreateResponse {
+func newJSONCreateResponse(response *projectApp.CreateResponse) JSONCreateResponse {
 	return JSONCreateResponse{
 		ID:        response.ID.String(),
 		Name:      response.Name,
@@ -39,7 +45,7 @@ func newJSONCreateResponse(response *application.CreateResponse) JSONCreateRespo
 	}
 }
 
-func (h *ProjectHandler) Create(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 	var jsonReq jsonCreateRequest
 	if err := json.NewDecoder(r.Body).Decode(&jsonReq); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
@@ -53,14 +59,14 @@ func (h *ProjectHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID, ok := UserIDFromContext(r.Context())
+	userID, ok := middleware.UserIDFromContext(r.Context())
 	if !ok {
 		w.WriteHeader(http.StatusUnauthorized)
 		_, _ = w.Write([]byte("Unauthorized"))
 		return
 	}
 
-	req := application.CreateRequest{
+	req := projectApp.CreateRequest{
 		ID:     projectID,
 		UserID: userID,
 		Name:   jsonReq.Name,
@@ -86,8 +92,8 @@ type JSONProjectResponse struct {
 	UpdatedAt string   `json:"updated_at"`
 }
 
-func (h *ProjectHandler) Get(w http.ResponseWriter, r *http.Request) {
-	p, ok := ProjectFromContext(r.Context())
+func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
+	p, ok := middleware.ProjectFromContext(r.Context())
 	if !ok {
 		w.WriteHeader(http.StatusInternalServerError)
 		_, _ = w.Write([]byte("Project not found in context"))
