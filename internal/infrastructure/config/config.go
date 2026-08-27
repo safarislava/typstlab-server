@@ -2,7 +2,7 @@ package config
 
 import (
 	"encoding/json"
-	"fmt"
+	"errors"
 	"os"
 	"strings"
 )
@@ -68,15 +68,21 @@ func parseOrigins(raw string) []string {
 	return origins
 }
 
+var (
+	ErrPortRequired        = errors.New("port is required")
+	ErrJWTSecretRequired   = errors.New("jwt_secret is required and cannot be empty")
+	ErrDatabaseURLRequired = errors.New("database_url is required and cannot be empty")
+)
+
 func (c *Config) Validate() error {
 	if c.Port == "" {
-		return fmt.Errorf("port is required")
+		return ErrPortRequired
 	}
 	if c.JWTSecret == "" {
-		return fmt.Errorf("jwt_secret is required and cannot be empty")
+		return ErrJWTSecretRequired
 	}
 	if c.DatabaseURL == "" {
-		return fmt.Errorf("database_url is required and cannot be empty")
+		return ErrDatabaseURLRequired
 	}
 	return nil
 }

@@ -2,7 +2,6 @@ package http
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"time"
 
@@ -50,7 +49,7 @@ func (h *ProjectHandler) Create(w http.ResponseWriter, r *http.Request) {
 	projectID, err := uuid.Parse(jsonReq.ID)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
-		_, _ = fmt.Fprintf(w, "invalid or missing project id: %v", err)
+		_, _ = w.Write([]byte("invalid or missing project id: " + err.Error()))
 		return
 	}
 

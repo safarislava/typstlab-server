@@ -2,7 +2,6 @@ package persistence
 
 import (
 	"context"
-	"errors"
 	"sync"
 
 	"github.com/google/uuid"
@@ -35,7 +34,7 @@ func (r *MemoryProjectRepository) FindByID(_ context.Context, id uuid.UUID) (*do
 
 	p, ok := r.store[id.String()]
 	if !ok {
-		return nil, errors.New("project not found")
+		return nil, domain.ErrProjectNotFound
 	}
 
 	return p, nil

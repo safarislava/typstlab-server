@@ -1,7 +1,6 @@
 package file
 
 import (
-	"errors"
 	"time"
 
 	"github.com/google/uuid"
@@ -104,7 +103,7 @@ func (f *TypstFile) Blocks() []block.Block {
 
 func (f *TypstFile) UpdateState(state []byte, blocks []block.Block) error {
 	if state == nil {
-		return errors.New("state cannot be nil")
+		return ErrNilState
 	}
 	f.state = append([]byte(nil), state...)
 	f.blocks = append([]block.Block(nil), blocks...)

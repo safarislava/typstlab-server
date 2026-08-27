@@ -2,7 +2,6 @@ package user
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"github.com/google/uuid"
@@ -43,7 +42,7 @@ func NewService(repo Repository, hasher PasswordHasher) UseCase {
 func (s *Service) Register(ctx context.Context, req RegisterRequest) (*RegisterResponse, error) {
 	existing, err := s.repo.FindByEmail(ctx, req.Email)
 	if err == nil && existing != nil {
-		return nil, errors.New("user with this email already exists")
+		return nil, domain.ErrUserAlreadyExists
 	}
 
 	hashedPassword, err := s.hasher.Hash(req.Password)

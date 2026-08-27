@@ -2,7 +2,6 @@ package persistence
 
 import (
 	"context"
-	"errors"
 	"sync"
 
 	"github.com/google/uuid"
@@ -47,7 +46,7 @@ func (r *MemoryFileRepository) FindTypstFileByID(_ context.Context, id uuid.UUID
 
 	f, ok := r.typstFiles[id]
 	if !ok {
-		return nil, errors.New("typst file not found")
+		return nil, domainFile.ErrTypstFileNotFound
 	}
 	return f, nil
 }
@@ -58,7 +57,7 @@ func (r *MemoryFileRepository) FindBinaryFileByID(_ context.Context, id uuid.UUI
 
 	f, ok := r.binaryFiles[id]
 	if !ok {
-		return nil, errors.New("binary file not found")
+		return nil, domainFile.ErrBinaryFileNotFound
 	}
 	return f, nil
 }
@@ -92,7 +91,7 @@ func (r *MemoryFileRepository) DeleteFile(_ context.Context, id uuid.UUID) error
 	_, existsBinary := r.binaryFiles[id]
 
 	if !existsTypst && !existsBinary {
-		return errors.New("file not found")
+		return domainFile.ErrFileNotFound
 	}
 
 	delete(r.typstFiles, id)
