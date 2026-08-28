@@ -117,6 +117,10 @@ func TestContainer_Services(t *testing.T) {
 
 	assertSingleton(t, "ProjectService", c.ProjectService(), c.ProjectService())
 	assertSingleton(t, "FileService", c.FileService(), c.FileService())
+	assertSingleton(t, "EntryService", c.EntryService(), c.EntryService())
+	assertSingleton(t, "MetadataService", c.MetadataService(), c.MetadataService())
+	assertSingleton(t, "SyncMetadataService", c.SyncMetadataService(), c.SyncMetadataService())
+	assertSingleton(t, "SyncFileService", c.SyncFileService(), c.SyncFileService())
 	assertSingleton(t, "SyncService", c.SyncService(), c.SyncService())
 	assertSingleton(t, "UserService", c.UserService(), c.UserService())
 	assertSingleton(t, "SessionService", c.SessionService(), c.SessionService())

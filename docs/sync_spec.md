@@ -46,7 +46,7 @@ sequenceDiagram
 
 ## 3. Эндпоинт и форматы данных
 
-### 3.1. Запрос клиентов (Manifest Request)
+### 3.1. Запрос клиентов (Sync Request)
 
 **HTTP Method & Path:** `POST /projects/{projectID}/sync`  
 **Headers:**  
@@ -55,40 +55,31 @@ sequenceDiagram
 
 ```json
 {
-  "files": [
-    {
-      "id": "c30980ef-51eb-47eb-ba05-89416a5db202",
-      "name": "main.typxml",
-      "type": "typst",
-      "yjs_state_vector": "base64_encoded_state_vector_here"
-    },
-    {
-      "id": "e8a34bc1-443b-417d-8153-f7256561129b",
-      "name": "diagram.png",
-      "type": "binary"
-    }
-  ]
+  "metadata_delta": "base64_encoded_crdt_delta_here",
+  "metadata_state_vector": "base64_encoded_state_vector_here",
+  "content_vectors": {
+    "c30980ef-51eb-47eb-ba05-89416a5db202": "base64_encoded_typst_text_state_vector"
+  }
 }
 ```
 
 #### Описание полей запроса:
-| Поле                       | Тип                        | Обязательность | Описание                                                          |
-|:---------------------------|:---------------------------|:--------------:|:------------------------------------------------------------------|
-| `files`                    | `Array<SyncFileRequest>`   |       Да       | Список файлов, находящихся в локальном хранилище клиента.         |
-| `files[].id`               | `UUID (string)`            |       Да       | Уникальный идентификатор файла (сгенерирован клиентом).           |
-| `files[].name`             | `string`                   |       Да       | Имя файла с расширением (например, `main.typxml` или `logo.png`). |
-| `files[].type`             | `enum ("typst", "binary")` |       Да       | Тип файла.                                                        |
-| `files[].yjs_state_vector` | `Base64 (string)`          |      Нет       | Вектор состояния Yjs (передаётся только для `type: "typst"`).     |
+| Поле                    | Тип                        | Обязательность | Описание                                                                  |
+|:------------------------|:---------------------------|:--------------:|:--------------------------------------------------------------------------|
+| `metadata_delta`        | `Base64 (string)`          |      Нет       | Двоичная дельта изменений CRDT дерева файлов (переименования, удаление).  |
+| `metadata_state_vector` | `Base64 (string)`          |      Нет       | Вектор состояния метаданных проекта на клиенте.                           |
+| `content_vectors`       | `Map<UUID, Base64 string>` |      Нет       | Векторы состояния Yjs для текста Typst-файлов (`fileID -> state_vector`).  |
 
 ---
 
-### 3.2. Ответ сервера (Instructions Response)
+### 3.2. Ответ сервера (Sync Response)
 
 **HTTP Status:** `200 OK`  
 **Content-Type:** `application/json`  
 
 ```json
 {
+  "metadata_delta": "base64_encoded_crdt_delta_here",
   "instructions": [
     {
       "action": "download",
@@ -97,15 +88,6 @@ sequenceDiagram
     {
       "action": "upload",
       "file_id": "e8a34bc1-443b-417d-8153-f7256561129b"
-    },
-    {
-      "action": "rename",
-      "file_id": "c30980ef-51eb-47eb-ba05-89416a5db202",
-      "new_name": "main_conflict.typ"
-    },
-    {
-      "action": "delete",
-      "file_id": "d7729fca-982c-47bc-8919-4822abf12351"
     },
     {
       "action": "apply_changes",
@@ -119,34 +101,30 @@ sequenceDiagram
 #### Описание полей ответа:
 | Поле                      | Тип                      | Описание                                                                           |
 |:--------------------------|:-------------------------|:-----------------------------------------------------------------------------------|
-| `instructions`            | `Array<SyncInstruction>` | Список команд, которые клиент должен выполнить последовательно.                    |
-| `instructions[].action`   | `enum`                   | Тип действия: `"download"`, `"upload"`, `"rename"`, `"delete"`, `"apply_changes"`. |
+| `metadata_delta`          | `Base64 (string)`        | Двоичная дельта обновлений CRDT метаданных проекта для применения на клиенте.      |
+| `instructions`            | `Array<SyncInstruction>` | Список команд, которые клиент должен выполнить для синхронизации контента файлов.   |
+| `instructions[].action`   | `enum`                   | Тип действия: `"download"`, `"upload"`, `"apply_changes"`.                          |
 | `instructions[].file_id`  | `UUID (string)`          | Идентификатор файла, к которому относится действие.                                |
-| `instructions[].new_name` | `string`                 | Новое имя файла (передаётся только для `action: "rename"`).                        |
 | `instructions[].delta`    | `Base64 (string)`        | Двоичная дельта обновлений Yjs (передаётся только для `action: "apply_changes"`).  |
 
 ---
 
 ## 4. Алгоритм обработки инструкций (`action`)
 
-1. **`download`**:
-   - Выдаётся, если файл существует на сервере, но отсутствует в манифесте клиента.
+1. **`metadata_delta`**:
+   - Применяется клиентом к локальному CRDT-документу метаданных проекта. Автоматически и бесконфликтно синхронизирует имена файлов (включая бинарные) и статусы удаления.
+
+2. **`download`**:
+   - Выдаётся, если файл существует на сервере, но отсутствует в локальном манифесте клиента.
    - Клиент запрашивает контент через `GET /files/typst/{fileID}` или `GET /files/binary/{fileID}/raw`.
 
-2. **`upload`**:
+3. **`upload`**:
    - Выдаётся, если файл был создан клиентом локально в офлайне и отсутствует на сервере.
    - Клиент отправляет контент и свой UUID на `POST /projects/{projectID}/files`.
 
-3. **`rename`**:
-   - Выдаётся в двух случаях:
-     a) Имя локального файла с данным ID отличается от имя файла на сервере $\rightarrow$ клиенту присылается актуальное имя с сервера.
-     b) Имя офлайн-файла совпадает с уже занятым именем другого файла на сервере $\rightarrow$ клиенту присылается сгенерированное имя с суффиксом (например, `filename_conflict.typxml`).
-
-4. **`delete`**:
-   - Выдаётся, если файл был удалён на сервере (зафиксирован статус `IsDeleted`).
-   - Клиент удаляет файл из локальной базы/кэша.
-
-5. **`apply_changes`**:
-   - Выдаётся для Typst-файлов, если на сервере есть обновления, отсутствующие у клиента.
+4. **`apply_changes`**:
+   - Выдаётся для Typst-файлов, если на сервере есть обновления текста, отсутствующие у клиента.
    - Сервер рассчитывает дельту: `crdt.EncodeStateAsUpdateV1(serverDoc, clientStateVector)`.
    - Клиент применяет полученную дельту `delta` к своему локальному Yjs-документу.
+
+

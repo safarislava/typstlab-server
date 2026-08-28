@@ -7,191 +7,148 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/reearth/ygo/crdt"
 
+	syncFile "github.com/safarislava/typstlab-server/internal/application/sync/file"
+	domainEntry "github.com/safarislava/typstlab-server/internal/domain/entry"
 	domainFile "github.com/safarislava/typstlab-server/internal/domain/file"
+	domainMeta "github.com/safarislava/typstlab-server/internal/domain/metadata"
 )
 
-type mockFileRepository struct {
-	files        []domainFile.File
-	deletedFiles map[uuid.UUID]bool
-	findErr      error
+type mockMetadataSyncer struct {
+	delta   []byte
+	meta    *domainMeta.Metadata
+	syncErr error
 }
 
-func (m *mockFileRepository) FindByProjectID(context.Context, uuid.UUID) ([]domainFile.File, error) {
-	if m.findErr != nil {
-		return nil, m.findErr
+func (m *mockMetadataSyncer) SyncMetadata(
+	_ context.Context,
+	_ uuid.UUID,
+	_, _ []byte,
+) ([]byte, *domainMeta.Metadata, error) {
+	if m.syncErr != nil {
+		return nil, nil, m.syncErr
+	}
+	return m.delta, m.meta, nil
+}
+
+type mockFileSyncer struct {
+	files        []domainFile.File
+	listErr      error
+	applyMetaErr error
+	instErr      error
+	instructions []syncFile.Instruction
+	appliedMeta  *domainMeta.Metadata
+	changedFile  *domainFile.TypstFile
+	changeErr    error
+}
+
+func (m *mockFileSyncer) ListFilesByProject(_ context.Context, _ uuid.UUID) ([]domainFile.File, error) {
+	if m.listErr != nil {
+		return nil, m.listErr
 	}
 	return m.files, nil
 }
 
-func (m *mockFileRepository) IsDeleted(_ context.Context, id uuid.UUID) (bool, error) {
-	if m.deletedFiles == nil {
-		return false, nil
+func (m *mockFileSyncer) ApplyFileChanges(_ context.Context, _ syncFile.ApplyFileChangesRequest) (*domainFile.TypstFile, error) {
+	if m.changeErr != nil {
+		return nil, m.changeErr
 	}
-	return m.deletedFiles[id], nil
+	return m.changedFile, nil
 }
 
-func TestSyncService_Sync_RenameOnMismatch(t *testing.T) {
+func (m *mockFileSyncer) ApplyMetadataMutations(_ context.Context, _ []domainFile.File, meta *domainMeta.Metadata) error {
+	m.appliedMeta = meta
+	return m.applyMetaErr
+}
+
+func (m *mockFileSyncer) GenerateContentInstructions(
+	_ []domainFile.File,
+	_ *domainMeta.Metadata,
+	_ map[uuid.UUID][]byte,
+) ([]syncFile.Instruction, error) {
+	if m.instErr != nil {
+		return nil, m.instErr
+	}
+	return m.instructions, nil
+}
+
+func TestSyncService_Sync_Success(t *testing.T) {
 	t.Parallel()
 	projectID := uuid.New()
 	fileID := uuid.New()
 
-	file, _ := domainFile.NewTypstFile(fileID, projectID, "file2-server.typ", nil, nil, time.Now())
-	repo := &mockFileRepository{files: []domainFile.File{file}}
-	service := NewService(repo)
+	entry, _ := domainEntry.NewEntry(fileID, "doc.typ", domainFile.TypeTypst, false, time.Now())
+	meta, _ := domainMeta.NewMetadata(projectID, []*domainEntry.Entry{entry})
 
-	req := &Request{
-		Files: []FileRequest{
-			{ID: fileID, Name: "file2-client.typ", Type: domainFile.TypeTypst},
+	metaSyncer := &mockMetadataSyncer{
+		delta: []byte("server-metadata-delta"),
+		meta:  meta,
+	}
+
+	fileSyncer := &mockFileSyncer{
+		instructions: []syncFile.Instruction{
+			{Action: ActionApplyChanges, FileID: fileID, Delta: []byte("delta")},
 		},
 	}
-	resp, err := service.Sync(context.Background(), projectID, req)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
 
-	if len(resp.Instructions) != 1 || resp.Instructions[0].Action != ActionRename || resp.Instructions[0].NewName != "file2-server.typ" {
-		t.Errorf("unexpected instructions: %+v", resp.Instructions)
-	}
-}
+	svc := NewService(metaSyncer, fileSyncer)
 
-func TestSyncService_Sync_ApplyChanges(t *testing.T) {
-	t.Parallel()
-	projectID := uuid.New()
-	fileID := uuid.New()
-
-	serverDoc := crdt.New()
-	serverDoc.Transact(func(txn *crdt.Transaction) {
-		text := txn.GetText("block:test")
-		text.Insert(txn, 0, "Hello World", nil)
+	resp, err := svc.Sync(context.Background(), projectID, &Request{
+		MetadataDelta: []byte("client-delta"),
 	})
-	serverState := serverDoc.EncodeStateAsUpdate()
-
-	clientDoc := crdt.New()
-	clientStateVector := crdt.EncodeStateVectorV1(clientDoc)
-
-	file, _ := domainFile.NewTypstFile(fileID, projectID, "file.typ", serverState, nil, time.Now())
-	repo := &mockFileRepository{files: []domainFile.File{file}}
-	service := NewService(repo)
-
-	req := &Request{
-		Files: []FileRequest{
-			{ID: fileID, Name: "file.typ", Type: domainFile.TypeTypst, State: clientStateVector},
-		},
-	}
-	resp, err := service.Sync(context.Background(), projectID, req)
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf("unexpected sync error: %v", err)
 	}
 
-	if len(resp.Instructions) != 1 || resp.Instructions[0].Action != ActionApplyChanges || len(resp.Instructions[0].Delta) == 0 {
-		t.Errorf("unexpected instructions: %+v", resp.Instructions)
+	if string(resp.MetadataDelta) != "server-metadata-delta" {
+		t.Errorf("expected delta 'server-metadata-delta', got %s", resp.MetadataDelta)
+	}
+	if len(resp.Instructions) != 1 {
+		t.Errorf("expected 1 instruction, got %d", len(resp.Instructions))
+	}
+	if fileSyncer.appliedMeta != meta {
+		t.Errorf("expected metadata to be applied")
 	}
 }
 
-func TestSyncService_Sync_UploadOfflineCreated(t *testing.T) {
+func TestSyncService_Sync_MetadataError(t *testing.T) {
 	t.Parallel()
-	projectID := uuid.New()
-	offlineID := uuid.New()
+	metaSyncer := &mockMetadataSyncer{syncErr: errors.New("meta sync failed")}
+	svc := NewService(metaSyncer, &mockFileSyncer{})
 
-	repo := &mockFileRepository{}
-	service := NewService(repo)
-
-	req := &Request{
-		Files: []FileRequest{
-			{ID: offlineID, Name: "new.typ", Type: domainFile.TypeTypst},
-		},
-	}
-	resp, err := service.Sync(context.Background(), projectID, req)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	if len(resp.Instructions) != 1 || resp.Instructions[0].Action != ActionUpload || resp.Instructions[0].FileID != offlineID {
-		t.Errorf("unexpected instructions: %+v", resp.Instructions)
-	}
-}
-
-func TestSyncService_Sync_UploadOfflineConflict(t *testing.T) {
-	t.Parallel()
-	projectID := uuid.New()
-	offlineID := uuid.New()
-	existingID := uuid.New()
-
-	existingFile, _ := domainFile.NewTypstFile(existingID, projectID, "conflict.typ", nil, nil, time.Now())
-	repo := &mockFileRepository{files: []domainFile.File{existingFile}}
-	service := NewService(repo)
-
-	req := &Request{
-		Files: []FileRequest{
-			{ID: offlineID, Name: "conflict.typ", Type: domainFile.TypeTypst},
-		},
-	}
-	resp, err := service.Sync(context.Background(), projectID, req)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	if len(resp.Instructions) != 3 {
-		t.Fatalf("expected 3 instructions, got: %+v", resp.Instructions)
-	}
-}
-
-func TestSyncService_Sync_Download(t *testing.T) {
-	t.Parallel()
-	projectID := uuid.New()
-	serverFileID := uuid.New()
-
-	serverFile, _ := domainFile.NewTypstFile(serverFileID, projectID, "server.typ", nil, nil, time.Now())
-	repo := &mockFileRepository{files: []domainFile.File{serverFile}}
-	service := NewService(repo)
-
-	req := &Request{Files: []FileRequest{}}
-	resp, err := service.Sync(context.Background(), projectID, req)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	if len(resp.Instructions) != 1 || resp.Instructions[0].Action != ActionDownload || resp.Instructions[0].FileID != serverFileID {
-		t.Errorf("unexpected instructions: %+v", resp.Instructions)
-	}
-}
-
-func TestSyncService_Sync_Delete(t *testing.T) {
-	t.Parallel()
-	projectID := uuid.New()
-	deletedFileID := uuid.New()
-
-	repo := &mockFileRepository{
-		deletedFiles: map[uuid.UUID]bool{deletedFileID: true},
-	}
-	service := NewService(repo)
-
-	req := &Request{
-		Files: []FileRequest{
-			{ID: deletedFileID, Name: "deleted.typ", Type: domainFile.TypeTypst},
-		},
-	}
-	resp, err := service.Sync(context.Background(), projectID, req)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	if len(resp.Instructions) != 1 || resp.Instructions[0].Action != ActionDelete || resp.Instructions[0].FileID != deletedFileID {
-		t.Errorf("unexpected instructions: %+v", resp.Instructions)
-	}
-}
-
-func TestSyncService_Sync_RepositoryError(t *testing.T) {
-	t.Parallel()
-	repo := &mockFileRepository{
-		findErr: errors.New("database failure"),
-	}
-	service := NewService(repo)
-
-	_, err := service.Sync(context.Background(), uuid.New(), &Request{})
+	_, err := svc.Sync(context.Background(), uuid.New(), &Request{})
 	if err == nil {
-		t.Error("Expected repository query error, got nil")
+		t.Error("expected error, got nil")
+	}
+}
+
+func TestSyncService_Sync_ListFilesError(t *testing.T) {
+	t.Parallel()
+	metaSyncer := &mockMetadataSyncer{}
+	fileSyncer := &mockFileSyncer{listErr: errors.New("list failed")}
+	svc := NewService(metaSyncer, fileSyncer)
+
+	_, err := svc.Sync(context.Background(), uuid.New(), &Request{})
+	if err == nil {
+		t.Error("expected error, got nil")
+	}
+}
+
+func TestSyncService_ApplyFileChanges(t *testing.T) {
+	t.Parallel()
+	fileID := uuid.New()
+	tf, _ := domainFile.NewTypstFile(fileID, uuid.New(), "doc.typ", nil, nil, time.Now())
+	fileSyncer := &mockFileSyncer{changedFile: tf}
+	svc := NewService(&mockMetadataSyncer{}, fileSyncer)
+
+	res, err := svc.ApplyFileChanges(context.Background(), ApplyFileChangesRequest{
+		FileID: fileID,
+		Delta:  []byte("delta"),
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if res != tf {
+		t.Errorf("expected changed file")
 	}
 }

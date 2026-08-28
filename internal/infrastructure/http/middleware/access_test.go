@@ -583,3 +583,29 @@ func TestFileFromContext_ValidFileContext(t *testing.T) {
 		t.Errorf("Expected file %v, got %v", expectedFile, f)
 	}
 }
+
+func TestWithProject(t *testing.T) {
+	t.Parallel()
+
+	projectID := uuid.New()
+	expectedProject, _ := domainProject.NewProject(projectID, []uuid.UUID{uuid.New()}, testProjectName, time.Now())
+	ctx := WithProject(context.Background(), expectedProject)
+
+	p, ok := ProjectFromContext(ctx)
+	if !ok || p != expectedProject {
+		t.Errorf("Expected %v, got %v (ok=%v)", expectedProject, p, ok)
+	}
+}
+
+func TestWithFile(t *testing.T) {
+	t.Parallel()
+
+	fileID := uuid.New()
+	expectedFile, _ := domainFile.NewTypstFile(fileID, uuid.New(), docTypstName, nil, nil, time.Now())
+	ctx := WithFile(context.Background(), expectedFile)
+
+	f, ok := FileFromContext(ctx)
+	if !ok || f != expectedFile {
+		t.Errorf("Expected %v, got %v (ok=%v)", expectedFile, f, ok)
+	}
+}

@@ -672,40 +672,29 @@ components:
 
     SyncRequest:
       type: object
-      required:
-        - files
       properties:
-        files:
-          type: array
-          items:
-            $ref: '#/components/schemas/SyncFileRequest'
-
-    SyncFileRequest:
-      type: object
-      required:
-        - id
-        - name
-        - type
-      properties:
-        id:
-          type: string
-          format: uuid
-          example: c30980ef-51eb-47eb-ba05-89416a5db202
-        name:
-          type: string
-          example: main.typ
-        type:
-          type: string
-          enum: [typst, binary]
-          example: typst
-        yjs_state_vector:
+        metadata_delta:
           type: string
           format: byte
-          description: Base64-encoded Yjs state vector (for typst files)
+          description: Base64-encoded binary CRDT delta update of project metadata / file tree
+        metadata_state_vector:
+          type: string
+          format: byte
+          description: Base64-encoded client project metadata CRDT state vector
+        content_vectors:
+          type: object
+          additionalProperties:
+            type: string
+            format: byte
+          description: Map of file UUID to Base64-encoded content Yjs state vector (for Typst files)
 
     SyncResponse:
       type: object
       properties:
+        metadata_delta:
+          type: string
+          format: byte
+          description: Base64-encoded binary CRDT delta update of project metadata from server
         instructions:
           type: array
           items:
@@ -719,16 +708,12 @@ components:
       properties:
         action:
           type: string
-          enum: [download, upload, rename, delete, apply_changes]
+          enum: [download, upload, apply_changes]
           example: download
         file_id:
           type: string
           format: uuid
           example: f5127cd9-4099-4c12-a74e-6e4695e263ab
-        new_name:
-          type: string
-          description: New filename (returned for rename action)
-          example: main_conflict.typ
         delta:
           type: string
           format: byte

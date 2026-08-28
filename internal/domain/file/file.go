@@ -58,6 +58,15 @@ func (f *BinaryFile) Content() []byte {
 	return append([]byte(nil), f.content...)
 }
 
+func (f *BinaryFile) Rename(name string) error {
+	if name == "" {
+		return ErrEmptyFileName
+	}
+	f.name = name
+	f.updatedAt = time.Now()
+	return nil
+}
+
 type TypstFile struct {
 	id        uuid.UUID
 	projectID uuid.UUID
@@ -107,6 +116,15 @@ func (f *TypstFile) UpdateState(state []byte, blocks []block.Block) error {
 	}
 	f.state = append([]byte(nil), state...)
 	f.blocks = append([]block.Block(nil), blocks...)
+	f.updatedAt = time.Now()
+	return nil
+}
+
+func (f *TypstFile) Rename(name string) error {
+	if name == "" {
+		return ErrEmptyFileName
+	}
+	f.name = name
 	f.updatedAt = time.Now()
 	return nil
 }

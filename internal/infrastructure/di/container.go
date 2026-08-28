@@ -10,10 +10,14 @@ import (
 	"github.com/go-chi/cors"
 
 	appAuth "github.com/safarislava/typstlab-server/internal/application/auth"
+	entryApp "github.com/safarislava/typstlab-server/internal/application/entry"
 	fileApp "github.com/safarislava/typstlab-server/internal/application/file"
+	metadataApp "github.com/safarislava/typstlab-server/internal/application/metadata"
 	projectApp "github.com/safarislava/typstlab-server/internal/application/project"
 	sessionApp "github.com/safarislava/typstlab-server/internal/application/session"
 	syncApp "github.com/safarislava/typstlab-server/internal/application/sync"
+	syncFile "github.com/safarislava/typstlab-server/internal/application/sync/file"
+	syncMetadata "github.com/safarislava/typstlab-server/internal/application/sync/metadata"
 	userApp "github.com/safarislava/typstlab-server/internal/application/user"
 	"github.com/safarislava/typstlab-server/internal/domain/user"
 	"github.com/safarislava/typstlab-server/internal/infrastructure/auth"
@@ -58,11 +62,23 @@ type Container struct {
 	yjsMergerOnce sync.Once
 
 	// Application Services
+	entryService     *entryApp.Service
+	entryServiceOnce sync.Once
+
 	projectService     *projectApp.Service
 	projectServiceOnce sync.Once
 
 	fileService     *fileApp.Service
 	fileServiceOnce sync.Once
+
+	metadataService     *metadataApp.Service
+	metadataServiceOnce sync.Once
+
+	syncMetadataService     *syncMetadata.Service
+	syncMetadataServiceOnce sync.Once
+
+	syncFileService     *syncFile.Service
+	syncFileServiceOnce sync.Once
 
 	syncService     *syncApp.Service
 	syncServiceOnce sync.Once
@@ -171,6 +187,14 @@ func (c *Container) YjsMerger() *crdt.YjsMerger {
 	return c.yjsMerger
 }
 
+// EntryService lazily initializes and returns the entry application service.
+func (c *Container) EntryService() *entryApp.Service {
+	c.entryServiceOnce.Do(func() {
+		c.entryService = entryApp.NewService()
+	})
+	return c.entryService
+}
+
 // ProjectService lazily initializes and returns the project application service.
 func (c *Container) ProjectService() *projectApp.Service {
 	c.projectServiceOnce.Do(func() {
@@ -182,15 +206,42 @@ func (c *Container) ProjectService() *projectApp.Service {
 // FileService lazily initializes and returns the file application service.
 func (c *Container) FileService() *fileApp.Service {
 	c.fileServiceOnce.Do(func() {
-		c.fileService = fileApp.NewService(c.FileRepo(), c.YjsMerger())
+		c.fileService = fileApp.NewService(c.FileRepo())
 	})
 	return c.fileService
+}
+
+// MetadataService lazily initializes and returns the metadata application service.
+func (c *Container) MetadataService() *metadataApp.Service {
+	c.metadataServiceOnce.Do(func() {
+		c.metadataService = metadataApp.NewService(c.FileRepo())
+	})
+	return c.metadataService
+}
+
+// SyncMetadataService lazily initializes and returns the metadata sync service.
+func (c *Container) SyncMetadataService() *syncMetadata.Service {
+	c.syncMetadataServiceOnce.Do(func() {
+		c.syncMetadataService = syncMetadata.NewService(c.MetadataService(), c.YjsMerger())
+	})
+	return c.syncMetadataService
+}
+
+// SyncFileService lazily initializes and returns the file sync service.
+func (c *Container) SyncFileService() *syncFile.Service {
+	c.syncFileServiceOnce.Do(func() {
+		c.syncFileService = syncFile.NewService(c.FileService(), c.YjsMerger(), c.YjsMerger())
+	})
+	return c.syncFileService
 }
 
 // SyncService lazily initializes and returns the sync application service.
 func (c *Container) SyncService() *syncApp.Service {
 	c.syncServiceOnce.Do(func() {
-		c.syncService = syncApp.NewService(c.FileRepo())
+		c.syncService = syncApp.NewService(
+			c.SyncMetadataService(),
+			c.SyncFileService(),
+		)
 	})
 	return c.syncService
 }
@@ -235,7 +286,7 @@ func (c *Container) ProjectHandler() *projectHttp.Handler {
 // FileHandler lazily initializes and returns the file HTTP handler.
 func (c *Container) FileHandler() *fileHttp.Handler {
 	c.fileHandlerOnce.Do(func() {
-		c.fileHandler = fileHttp.NewHandler(c.FileService())
+		c.fileHandler = fileHttp.NewHandler(c.FileService(), c.SyncService())
 	})
 	return c.fileHandler
 }
