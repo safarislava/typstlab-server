@@ -20,9 +20,9 @@ type Request struct {
 type Action = syncFile.Action
 
 const (
-	ActionDownload     Action = syncFile.ActionDownload
-	ActionUpload       Action = syncFile.ActionUpload
-	ActionApplyChanges Action = syncFile.ActionApplyChanges
+	ActionDownload     = syncFile.ActionDownload
+	ActionUpload       = syncFile.ActionUpload
+	ActionApplyChanges = syncFile.ActionApplyChanges
 )
 
 type Instruction = syncFile.Instruction
