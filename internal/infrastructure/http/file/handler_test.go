@@ -14,6 +14,7 @@ import (
 	"github.com/google/uuid"
 
 	fileApp "github.com/safarislava/typstlab-server/internal/application/file"
+	syncApp "github.com/safarislava/typstlab-server/internal/application/sync"
 	domainFile "github.com/safarislava/typstlab-server/internal/domain/file"
 	domainProject "github.com/safarislava/typstlab-server/internal/domain/project"
 	"github.com/safarislava/typstlab-server/internal/infrastructure/http/middleware"
@@ -52,7 +53,7 @@ type mockFileUseCase struct {
 	uploadTypstFileFunc    func(ctx context.Context, req *fileApp.UploadTypstFileRequest) (*domainFile.TypstFile, error)
 	uploadBinaryFileFunc   func(ctx context.Context, req *fileApp.UploadBinaryFileRequest) (*domainFile.BinaryFile, error)
 	listFilesByProjectFunc func(ctx context.Context, projectID uuid.UUID) ([]domainFile.File, error)
-	applyFileChangesFunc   func(ctx context.Context, req fileApp.ApplyFileChangesRequest) (*domainFile.TypstFile, error)
+	applyFileChangesFunc   func(ctx context.Context, req syncApp.ApplyFileChangesRequest) (*domainFile.TypstFile, error)
 	deleteFileFunc         func(ctx context.Context, fileID uuid.UUID) error
 }
 
@@ -77,7 +78,7 @@ func (m *mockFileUseCase) ListFilesByProject(ctx context.Context, projectID uuid
 	return nil, nil
 }
 
-func (m *mockFileUseCase) ApplyFileChanges(ctx context.Context, req fileApp.ApplyFileChangesRequest) (*domainFile.TypstFile, error) {
+func (m *mockFileUseCase) ApplyFileChanges(ctx context.Context, req syncApp.ApplyFileChangesRequest) (*domainFile.TypstFile, error) {
 	if m.applyFileChangesFunc != nil {
 		return m.applyFileChangesFunc(ctx, req)
 	}
@@ -110,7 +111,7 @@ func TestFileHandler_UploadTypstFile(t *testing.T) {
 		},
 	}
 
-	handler := NewHandler(mockFile)
+	handler := NewHandler(mockFile, mockFile)
 	ctx := testContext(userID, p, nil)
 
 	reqBody, _ := json.Marshal(jsonUploadFileRequest{
@@ -148,7 +149,7 @@ func TestFileHandler_UploadTypstFile_WithXML(t *testing.T) {
 		},
 	}
 
-	handler := NewHandler(mockFile)
+	handler := NewHandler(mockFile, mockFile)
 	ctx := testContext(userID, p, nil)
 
 	reqBody, _ := json.Marshal(jsonUploadFileRequest{
@@ -182,7 +183,7 @@ func TestFileHandler_UploadBinaryFile_Multipart(t *testing.T) {
 		},
 	}
 
-	handler := NewHandler(mockFile)
+	handler := NewHandler(mockFile, mockFile)
 	ctx := testContext(userID, p, nil)
 
 	body := &bytes.Buffer{}
@@ -215,7 +216,7 @@ func TestFileHandler_ListProjectFiles(t *testing.T) {
 		},
 	}
 
-	handler := NewHandler(mockFile)
+	handler := NewHandler(mockFile, mockFile)
 	ctx := testContext(userID, p, nil)
 
 	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/projects/"+projectID.String()+"/files", nil)
@@ -245,7 +246,7 @@ func TestFileHandler_GetTypstFile(t *testing.T) {
 	tf, _ := domainFile.NewTypstFile(fileID, projectID, docTyp, []byte("state"), nil, time.Now())
 	mockFile := &mockFileUseCase{}
 
-	handler := NewHandler(mockFile)
+	handler := NewHandler(mockFile, mockFile)
 	ctx := testContext(userID, nil, tf)
 
 	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/files/typst/"+fileID.String(), nil)
@@ -275,7 +276,7 @@ func TestFileHandler_GetBinaryFileRaw(t *testing.T) {
 	bf, _ := domainFile.NewBinaryFile(fileID, projectID, "image.png", []byte{4, 5, 6}, time.Now())
 	mockFile := &mockFileUseCase{}
 
-	handler := NewHandler(mockFile)
+	handler := NewHandler(mockFile, mockFile)
 	ctx := testContext(userID, nil, bf)
 
 	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/files/binary/"+fileID.String()+"/raw", nil)
@@ -303,7 +304,7 @@ func TestFileHandler_ApplyFileChanges(t *testing.T) {
 	updatedTf, _ := domainFile.NewTypstFile(fileID, projectID, docTyp, []byte("updated-state"), nil, time.Now())
 
 	mockFile := &mockFileUseCase{
-		applyFileChangesFunc: func(ctx context.Context, req fileApp.ApplyFileChangesRequest) (*domainFile.TypstFile, error) {
+		applyFileChangesFunc: func(ctx context.Context, req syncApp.ApplyFileChangesRequest) (*domainFile.TypstFile, error) {
 			if req.FileID == fileID && string(req.Delta) == "changes" {
 				return updatedTf, nil
 			}
@@ -311,7 +312,7 @@ func TestFileHandler_ApplyFileChanges(t *testing.T) {
 		},
 	}
 
-	handler := NewHandler(mockFile)
+	handler := NewHandler(mockFile, mockFile)
 	ctx := testContext(userID, nil, tf)
 
 	reqBody, _ := json.Marshal(jsonApplyFileChangesRequest{Delta: []byte("changes")})
@@ -352,7 +353,7 @@ func TestFileHandler_DeleteFile(t *testing.T) {
 		},
 	}
 
-	handler := NewHandler(mockFile)
+	handler := NewHandler(mockFile, mockFile)
 	ctx := testContext(userID, p, tf)
 
 	req := httptest.NewRequestWithContext(ctx, http.MethodDelete, "/projects/"+projectID.String()+"/files/"+fileID.String(), nil)

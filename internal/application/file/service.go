@@ -26,11 +26,6 @@ type UploadBinaryFileRequest struct {
 	Content   []byte
 }
 
-type ApplyFileChangesRequest struct {
-	FileID uuid.UUID
-	Delta  []byte
-}
-
 type Response struct {
 	ID        uuid.UUID
 	ProjectID uuid.UUID
@@ -48,19 +43,13 @@ type Repository interface {
 	IsDeleted(ctx context.Context, id uuid.UUID) (bool, error)
 }
 
-type Merger interface {
-	MergeFile(state, delta []byte) (newState []byte, updatedBlocks []block.Block, err error)
-}
-
 type Service struct {
-	repo   Repository
-	merger Merger
+	repo Repository
 }
 
-func NewService(repo Repository, merger Merger) *Service {
+func NewService(repo Repository) *Service {
 	return &Service{
-		repo:   repo,
-		merger: merger,
+		repo: repo,
 	}
 }
 
@@ -90,6 +79,20 @@ func (s *Service) UploadBinaryFile(ctx context.Context, req *UploadBinaryFileReq
 	return f, nil
 }
 
+func (s *Service) SaveTypstFile(ctx context.Context, f *domainFile.TypstFile) error {
+	if err := s.repo.SaveTypstFile(ctx, f); err != nil {
+		return fmt.Errorf("failed to save typst file: %w", err)
+	}
+	return nil
+}
+
+func (s *Service) SaveBinaryFile(ctx context.Context, f *domainFile.BinaryFile) error {
+	if err := s.repo.SaveBinaryFile(ctx, f); err != nil {
+		return fmt.Errorf("failed to save binary file: %w", err)
+	}
+	return nil
+}
+
 func (s *Service) GetTypstFile(ctx context.Context, fileID uuid.UUID) (*domainFile.TypstFile, error) {
 	f, err := s.repo.FindTypstFileByID(ctx, fileID)
 	if err != nil {
@@ -108,26 +111,24 @@ func (s *Service) GetBinaryFile(ctx context.Context, fileID uuid.UUID) (*domainF
 	return f, nil
 }
 
-func (s *Service) ApplyFileChanges(ctx context.Context, req ApplyFileChangesRequest) (*domainFile.TypstFile, error) {
-	f, err := s.repo.FindTypstFileByID(ctx, req.FileID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to find typst file: %w", err)
+func (s *Service) RenameFile(ctx context.Context, fileID uuid.UUID, newName string) error {
+	tf, errTypst := s.repo.FindTypstFileByID(ctx, fileID)
+	if errTypst == nil {
+		if err := tf.Rename(newName); err != nil {
+			return fmt.Errorf("failed to rename typst file %s: %w", fileID, err)
+		}
+		return s.SaveTypstFile(ctx, tf)
 	}
 
-	state, blocks, err := s.merger.MergeFile(f.State(), req.Delta)
-	if err != nil {
-		return nil, fmt.Errorf("failed to merge file delta: %w", err)
+	bf, errBinary := s.repo.FindBinaryFileByID(ctx, fileID)
+	if errBinary == nil {
+		if err := bf.Rename(newName); err != nil {
+			return fmt.Errorf("failed to rename binary file %s: %w", fileID, err)
+		}
+		return s.SaveBinaryFile(ctx, bf)
 	}
 
-	if err := f.UpdateState(state, blocks); err != nil {
-		return nil, fmt.Errorf("failed to update typst file aggregate state: %w", err)
-	}
-
-	if err := s.repo.SaveTypstFile(ctx, f); err != nil {
-		return nil, fmt.Errorf("failed to save updated typst file: %w", err)
-	}
-
-	return f, nil
+	return fmt.Errorf("file not found: %s", fileID)
 }
 
 func (s *Service) DeleteFile(ctx context.Context, fileID uuid.UUID) error {

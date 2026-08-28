@@ -3,12 +3,12 @@ package sync
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 
 	"github.com/google/uuid"
 
 	syncApp "github.com/safarislava/typstlab-server/internal/application/sync"
-	domainFile "github.com/safarislava/typstlab-server/internal/domain/file"
 	"github.com/safarislava/typstlab-server/internal/infrastructure/http/middleware"
 )
 
@@ -26,26 +26,21 @@ func NewHandler(syncService Service) *Handler {
 	}
 }
 
-type JSONSyncFileRequest struct {
-	ID             string `json:"id"`
-	Name           string `json:"name"`
-	Type           string `json:"type"`
-	YjsStateVector []byte `json:"yjs_state_vector,omitempty"`
-}
-
 type JSONSyncRequest struct {
-	Files []JSONSyncFileRequest `json:"files"`
+	MetadataDelta       []byte            `json:"metadata_delta,omitempty"`
+	MetadataStateVector []byte            `json:"metadata_state_vector,omitempty"`
+	ContentVectors      map[string][]byte `json:"content_vectors,omitempty"`
 }
 
 type JSONInstructionResponse struct {
-	Action  string `json:"action"`
-	FileID  string `json:"file_id"`
-	NewName string `json:"new_name,omitempty"`
-	Delta   []byte `json:"delta,omitempty"`
+	Action string `json:"action"`
+	FileID string `json:"file_id"`
+	Delta  []byte `json:"delta,omitempty"`
 }
 
 type JSONSyncResponse struct {
-	Instructions []JSONInstructionResponse `json:"instructions"`
+	MetadataDelta []byte                    `json:"metadata_delta,omitempty"`
+	Instructions  []JSONInstructionResponse `json:"instructions"`
 }
 
 func (h *Handler) Sync(w http.ResponseWriter, r *http.Request) {
@@ -63,24 +58,17 @@ func (h *Handler) Sync(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	files := make([]syncApp.FileRequest, 0, len(jsonReq.Files))
-	for _, f := range jsonReq.Files {
-		id, err := uuid.Parse(f.ID)
-		if err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			_, _ = w.Write([]byte("Invalid file id in sync request: " + f.ID))
-			return
-		}
-		files = append(files, syncApp.FileRequest{
-			ID:    id,
-			Name:  f.Name,
-			Type:  domainFile.Type(f.Type),
-			State: f.YjsStateVector,
-		})
+	contentVectors, err := parseContentVectors(jsonReq.ContentVectors)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(err.Error()))
+		return
 	}
 
 	appReq := &syncApp.Request{
-		Files: files,
+		MetadataDelta:       jsonReq.MetadataDelta,
+		MetadataStateVector: jsonReq.MetadataStateVector,
+		ContentVectors:      contentVectors,
 	}
 
 	resp, err := h.syncService.Sync(r.Context(), p.ID(), appReq)
@@ -90,18 +78,37 @@ func (h *Handler) Sync(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.writeResponse(w, resp)
+}
+
+func parseContentVectors(raw map[string][]byte) (map[uuid.UUID][]byte, error) {
+	if raw == nil {
+		return nil, nil
+	}
+	res := make(map[uuid.UUID][]byte, len(raw))
+	for k, v := range raw {
+		id, err := uuid.Parse(k)
+		if err != nil {
+			return nil, fmt.Errorf("invalid file id in content vectors: %s", k)
+		}
+		res[id] = v
+	}
+	return res, nil
+}
+
+func (h *Handler) writeResponse(w http.ResponseWriter, resp *syncApp.Response) {
 	instructions := make([]JSONInstructionResponse, 0, len(resp.Instructions))
 	for _, instruction := range resp.Instructions {
 		instructions = append(instructions, JSONInstructionResponse{
-			Action:  string(instruction.Action),
-			FileID:  instruction.FileID.String(),
-			NewName: instruction.NewName,
-			Delta:   instruction.Delta,
+			Action: string(instruction.Action),
+			FileID: instruction.FileID.String(),
+			Delta:  instruction.Delta,
 		})
 	}
 
 	jsonResp := JSONSyncResponse{
-		Instructions: instructions,
+		MetadataDelta: resp.MetadataDelta,
+		Instructions:  instructions,
 	}
 
 	w.Header().Set("Content-Type", "application/json")

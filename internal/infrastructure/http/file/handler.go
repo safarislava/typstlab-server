@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 
 	fileApp "github.com/safarislava/typstlab-server/internal/application/file"
+	syncApp "github.com/safarislava/typstlab-server/internal/application/sync"
 	domainBlock "github.com/safarislava/typstlab-server/internal/domain/block"
 	domainFile "github.com/safarislava/typstlab-server/internal/domain/file"
 	"github.com/safarislava/typstlab-server/internal/infrastructure/http/middleware"
@@ -22,17 +23,22 @@ type Service interface {
 	UploadTypstFile(ctx context.Context, req *fileApp.UploadTypstFileRequest) (*domainFile.TypstFile, error)
 	UploadBinaryFile(ctx context.Context, req *fileApp.UploadBinaryFileRequest) (*domainFile.BinaryFile, error)
 	ListFilesByProject(ctx context.Context, projectID uuid.UUID) ([]domainFile.File, error)
-	ApplyFileChanges(ctx context.Context, req fileApp.ApplyFileChangesRequest) (*domainFile.TypstFile, error)
 	DeleteFile(ctx context.Context, fileID uuid.UUID) error
 }
 
-type Handler struct {
-	fileService Service
+type ChangeApplier interface {
+	ApplyFileChanges(ctx context.Context, req syncApp.ApplyFileChangesRequest) (*domainFile.TypstFile, error)
 }
 
-func NewHandler(fileService Service) *Handler {
+type Handler struct {
+	fileService   Service
+	changeApplier ChangeApplier
+}
+
+func NewHandler(fileService Service, changeApplier ChangeApplier) *Handler {
 	return &Handler{
-		fileService: fileService,
+		fileService:   fileService,
+		changeApplier: changeApplier,
 	}
 }
 
@@ -348,12 +354,12 @@ func (h *Handler) ApplyFileChanges(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	req := fileApp.ApplyFileChangesRequest{
+	req := syncApp.ApplyFileChangesRequest{
 		FileID: tf.ID(),
 		Delta:  jsonReq.Delta,
 	}
 
-	updatedFile, err := h.fileService.ApplyFileChanges(r.Context(), req)
+	updatedFile, err := h.changeApplier.ApplyFileChanges(r.Context(), req)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		_, _ = w.Write([]byte(err.Error()))

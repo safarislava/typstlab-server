@@ -4,9 +4,14 @@ import (
 	"bytes"
 	"encoding/base64"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/reearth/ygo/crdt"
+
+	domainEntry "github.com/safarislava/typstlab-server/internal/domain/entry"
+	domainFile "github.com/safarislava/typstlab-server/internal/domain/file"
+	domainMeta "github.com/safarislava/typstlab-server/internal/domain/metadata"
 )
 
 const (
@@ -15,6 +20,7 @@ const (
 	testSec1Name     = "Section 1"
 	testSec1Content  = "Content of section 1"
 	blockNameKey     = "name"
+	testRenamedTyp   = "renamed.typ"
 )
 
 func TestYjsMerger_MergeFile_Initial(t *testing.T) {
@@ -156,5 +162,94 @@ func TestUserPayloadContent(t *testing.T) {
 	}
 	if blocks[0].Content() == "" {
 		t.Error("expected non-empty content, got empty string")
+	}
+}
+
+func TestYjsMerger_SyncMetadata(t *testing.T) {
+	t.Parallel()
+
+	merger := NewYjsMerger()
+	fileID := uuid.New()
+	projectID := uuid.New()
+
+	serverEntry, _ := domainEntry.NewEntry(fileID, "main.typ", domainFile.TypeTypst, false, time.Now())
+	serverMeta, _ := domainMeta.NewMetadata(projectID, []*domainEntry.Entry{serverEntry})
+
+	// 1. Initial metadata sync with empty client vector
+	clientDoc := crdt.New()
+	sv := crdt.EncodeStateVectorV1(clientDoc)
+
+	delta, meta, err := merger.SyncMetadata(projectID, serverMeta, nil, sv)
+	if err != nil {
+		t.Fatalf("failed to sync metadata: %v", err)
+	}
+
+	if len(delta) == 0 {
+		t.Error("expected non-empty metadata delta")
+	}
+	gotEntry, exists := meta.Get(fileID)
+	if !exists || gotEntry.Name() != "main.typ" {
+		t.Errorf("unexpected active entries: %+v", meta.Entries())
+	}
+
+	// 2. Client applies delta and modifies metadata
+	if applyErr := clientDoc.ApplyUpdate(delta); applyErr != nil {
+		t.Fatalf("failed to apply update to clientDoc: %v", applyErr)
+	}
+
+	clientDoc.Transact(func(txn *crdt.Transaction) {
+		filesMap := txn.GetMap("files")
+		fileEntry := map[string]any{
+			"id":         fileID.String(),
+			"name":       testRenamedTyp,
+			"type":       string(domainFile.TypeTypst),
+			"is_deleted": false,
+		}
+		filesMap.Set(txn, fileID.String(), fileEntry)
+	})
+	clientDelta := clientDoc.EncodeStateAsUpdate()
+
+	_, updatedMeta, err := merger.SyncMetadata(projectID, serverMeta, clientDelta, nil)
+	if err != nil {
+		t.Fatalf("failed to sync updated metadata: %v", err)
+	}
+
+	updatedEntry, exists := updatedMeta.Get(fileID)
+	if !exists || updatedEntry.Name() != testRenamedTyp {
+		t.Errorf("expected renamed file name %q, got %+v", testRenamedTyp, updatedEntry)
+	}
+}
+
+func TestYjsMerger_ComputeDelta(t *testing.T) {
+	t.Parallel()
+
+	merger := NewYjsMerger()
+
+	serverDoc := crdt.New()
+	serverDoc.Transact(func(txn *crdt.Transaction) {
+		t1 := txn.GetText("block:test")
+		t1.Insert(txn, 0, "Hello World", nil)
+	})
+	serverState := serverDoc.EncodeStateAsUpdate()
+
+	clientDoc := crdt.New()
+	clientSV := crdt.EncodeStateVectorV1(clientDoc)
+
+	delta, err := merger.ComputeDelta(serverState, clientSV)
+	if err != nil {
+		t.Fatalf("failed to compute delta: %v", err)
+	}
+
+	if len(delta) == 0 {
+		t.Error("expected non-empty delta update")
+	}
+
+	if applyErr := clientDoc.ApplyUpdate(delta); applyErr != nil {
+		t.Fatalf("failed to apply delta to clientDoc: %v", applyErr)
+	}
+
+	txt := clientDoc.GetText("block:test").ToString()
+	if txt != "Hello World" {
+		t.Errorf("expected text %q, got %q", "Hello World", txt)
 	}
 }

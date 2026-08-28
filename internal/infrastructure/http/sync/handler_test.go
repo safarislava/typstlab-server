@@ -13,7 +13,6 @@ import (
 	"github.com/google/uuid"
 
 	syncApp "github.com/safarislava/typstlab-server/internal/application/sync"
-	domainFile "github.com/safarislava/typstlab-server/internal/domain/file"
 	domainProject "github.com/safarislava/typstlab-server/internal/domain/project"
 	"github.com/safarislava/typstlab-server/internal/infrastructure/http/middleware"
 )
@@ -58,12 +57,8 @@ func TestSyncHandler_Sync_Success(t *testing.T) {
 	handler := NewHandler(syncSvc)
 
 	jsonReq := JSONSyncRequest{
-		Files: []JSONSyncFileRequest{
-			{
-				ID:   clientFileID.String(),
-				Name: "offline.typ",
-				Type: string(domainFile.TypeTypst),
-			},
+		ContentVectors: map[string][]byte{
+			clientFileID.String(): []byte("vector-state"),
 		},
 	}
 	body, _ := json.Marshal(jsonReq)
@@ -83,8 +78,55 @@ func TestSyncHandler_Sync_Success(t *testing.T) {
 		t.Fatalf("Failed to decode response: %v", err)
 	}
 
-	if len(jsonResp.Instructions) < 2 {
-		t.Errorf("Expected at least 2 instructions (upload for offline file, download for server file), got %d", len(jsonResp.Instructions))
+	if len(jsonResp.Instructions) != 2 {
+		t.Errorf("Expected 2 instructions, got %d", len(jsonResp.Instructions))
+	}
+}
+
+func TestSyncHandler_Sync_WithMetadata(t *testing.T) {
+	t.Parallel()
+
+	projectID := uuid.New()
+	p, err := domainProject.NewProject(projectID, []uuid.UUID{uuid.New()}, "Test Project", time.Now())
+	if err != nil {
+		t.Fatalf("Failed to create project: %v", err)
+	}
+
+	mockDelta := []byte("server-metadata-delta")
+	syncSvc := &mockSyncService{
+		syncFunc: func(ctx context.Context, pid uuid.UUID, req *syncApp.Request) (*syncApp.Response, error) {
+			if string(req.MetadataStateVector) != "client-state-vector" {
+				t.Errorf("unexpected metadata state vector: %s", string(req.MetadataStateVector))
+			}
+			return &syncApp.Response{
+				MetadataDelta: mockDelta,
+			}, nil
+		},
+	}
+	handler := NewHandler(syncSvc)
+
+	jsonReq := JSONSyncRequest{
+		MetadataStateVector: []byte("client-state-vector"),
+	}
+	body, _ := json.Marshal(jsonReq)
+
+	ctx := middleware.WithProject(context.Background(), p)
+	req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/projects/"+projectID.String()+"/sync", bytes.NewBuffer(body))
+	rr := httptest.NewRecorder()
+
+	handler.Sync(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("Expected status code %d, got %d", http.StatusOK, rr.Code)
+	}
+
+	var jsonResp JSONSyncResponse
+	if err := json.NewDecoder(rr.Body).Decode(&jsonResp); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+
+	if !bytes.Equal(jsonResp.MetadataDelta, mockDelta) {
+		t.Errorf("expected metadata delta %s, got %s", string(mockDelta), string(jsonResp.MetadataDelta))
 	}
 }
 
@@ -132,12 +174,8 @@ func TestSyncHandler_Sync_InvalidFileID(t *testing.T) {
 	handler := NewHandler(syncSvc)
 
 	jsonReq := JSONSyncRequest{
-		Files: []JSONSyncFileRequest{
-			{
-				ID:   "invalid-uuid",
-				Name: "test.typ",
-				Type: string(domainFile.TypeTypst),
-			},
+		ContentVectors: map[string][]byte{
+			"invalid-uuid": []byte("some-vector"),
 		},
 	}
 	body, _ := json.Marshal(jsonReq)

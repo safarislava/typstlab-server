@@ -2,10 +2,12 @@ package persistence
 
 import (
 	"context"
+	"fmt"
 	"sync"
 
 	"github.com/google/uuid"
 
+	domainEntry "github.com/safarislava/typstlab-server/internal/domain/entry"
 	domainFile "github.com/safarislava/typstlab-server/internal/domain/file"
 )
 
@@ -105,4 +107,58 @@ func (r *MemoryFileRepository) IsDeleted(_ context.Context, id uuid.UUID) (bool,
 	defer r.mu.RUnlock()
 
 	return r.tombstones[id], nil
+}
+
+func (r *MemoryFileRepository) FindEntriesByProjectID(_ context.Context, projectID uuid.UUID) ([]*domainEntry.Entry, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	var result []*domainEntry.Entry
+
+	var err error
+	result, err = appendEntriesForTypst(result, r.typstFiles, projectID)
+	if err != nil {
+		return nil, err
+	}
+
+	result, err = appendEntriesForBinary(result, r.binaryFiles, projectID)
+	if err != nil {
+		return nil, err
+	}
+
+	return result, nil
+}
+
+func appendEntriesForTypst(
+	result []*domainEntry.Entry,
+	files map[uuid.UUID]*domainFile.TypstFile,
+	projectID uuid.UUID,
+) ([]*domainEntry.Entry, error) {
+	for _, f := range files {
+		if f.ProjectID() == projectID {
+			entry, err := domainEntry.NewEntry(f.ID(), f.Name(), f.Type(), false, f.UpdatedAt())
+			if err != nil {
+				return nil, fmt.Errorf("failed to create entry for typst file %s: %w", f.ID(), err)
+			}
+			result = append(result, entry)
+		}
+	}
+	return result, nil
+}
+
+func appendEntriesForBinary(
+	result []*domainEntry.Entry,
+	files map[uuid.UUID]*domainFile.BinaryFile,
+	projectID uuid.UUID,
+) ([]*domainEntry.Entry, error) {
+	for _, f := range files {
+		if f.ProjectID() == projectID {
+			entry, err := domainEntry.NewEntry(f.ID(), f.Name(), f.Type(), false, f.UpdatedAt())
+			if err != nil {
+				return nil, fmt.Errorf("failed to create entry for binary file %s: %w", f.ID(), err)
+			}
+			result = append(result, entry)
+		}
+	}
+	return result, nil
 }
