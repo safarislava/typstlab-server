@@ -133,3 +133,35 @@ func TestTypstFile_UpdateState(t *testing.T) {
 		t.Error("expected error for nil state, got nil")
 	}
 }
+
+func TestBinaryFile_Rename(t *testing.T) {
+	t.Parallel()
+
+	f, _ := NewBinaryFile(uuid.New(), uuid.New(), "old.png", []byte("content"), time.Now())
+	if err := f.Rename("new.png"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if f.Name() != "new.png" {
+		t.Errorf("expected name 'new.png', got %s", f.Name())
+	}
+
+	if err := f.Rename(""); !errors.Is(err, ErrEmptyFileName) {
+		t.Errorf("expected ErrEmptyFileName, got %v", err)
+	}
+}
+
+func TestTypstFile_Rename(t *testing.T) {
+	t.Parallel()
+
+	f, _ := NewTypstFile(uuid.New(), uuid.New(), "old.typ", []byte("state"), nil, time.Now())
+	if err := f.Rename("new.typ"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if f.Name() != "new.typ" {
+		t.Errorf("expected name 'new.typ', got %s", f.Name())
+	}
+
+	if err := f.Rename(""); !errors.Is(err, ErrEmptyFileName) {
+		t.Errorf("expected ErrEmptyFileName, got %v", err)
+	}
+}
