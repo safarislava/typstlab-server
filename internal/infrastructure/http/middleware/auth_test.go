@@ -203,3 +203,14 @@ func TestUserIDFromContext(t *testing.T) {
 		t.Errorf("Expected userID %s, got %s", userID, found)
 	}
 }
+
+func TestWithUserID(t *testing.T) {
+	t.Parallel()
+
+	userID := uuid.New()
+	ctx := WithUserID(context.Background(), userID)
+	found, ok := UserIDFromContext(ctx)
+	if !ok || found != userID {
+		t.Errorf("Expected %s, got %s (ok=%v)", userID, found, ok)
+	}
+}

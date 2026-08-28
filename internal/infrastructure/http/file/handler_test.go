@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"mime/multipart"
 	"net/http"
@@ -20,7 +21,10 @@ import (
 	"github.com/safarislava/typstlab-server/internal/infrastructure/http/middleware"
 )
 
-const docTyp = "doc.typxml"
+const (
+	docTyp     = "doc.typxml"
+	testTypxml = "test.typxml"
+)
 
 func testContext(userID uuid.UUID, project *domainProject.Project, file domainFile.File) context.Context {
 	ctx := middleware.WithUserID(context.Background(), userID)
@@ -367,5 +371,321 @@ func TestFileHandler_DeleteFile(t *testing.T) {
 
 	if !deletedFileCalled {
 		t.Error("Expected file service delete to be called")
+	}
+}
+
+func TestFileHandler_GetBinaryFile(t *testing.T) {
+	t.Parallel()
+
+	userID := uuid.New()
+	projectID := uuid.New()
+	fileID := uuid.New()
+
+	bf, _ := domainFile.NewBinaryFile(fileID, projectID, "image.png", []byte{1, 2, 3}, time.Now())
+	mockFile := &mockFileUseCase{}
+
+	handler := NewHandler(mockFile, mockFile)
+	ctx := testContext(userID, nil, bf)
+
+	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/files/binary/"+fileID.String(), nil)
+	rr := httptest.NewRecorder()
+
+	handler.GetBinaryFile(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("Expected status code %d, got %d", http.StatusOK, rr.Code)
+	}
+
+	var resp JSONBinaryFileResponse
+	_ = json.NewDecoder(rr.Body).Decode(&resp)
+
+	if resp.ID != fileID.String() || resp.Name != "image.png" || resp.Size != 3 {
+		t.Errorf("Unexpected response: %+v", resp)
+	}
+}
+
+func TestFileHandler_GetTypstFile_Errors(t *testing.T) {
+	t.Parallel()
+
+	userID := uuid.New()
+	projectID := uuid.New()
+	fileID := uuid.New()
+
+	mockFile := &mockFileUseCase{}
+	handler := NewHandler(mockFile, mockFile)
+
+	// Case 1: Missing file context
+	req1 := httptest.NewRequestWithContext(testContext(userID, nil, nil), http.MethodGet, "/files/typst/"+fileID.String(), nil)
+	rr1 := httptest.NewRecorder()
+	handler.GetTypstFile(rr1, req1)
+	if rr1.Code != http.StatusInternalServerError {
+		t.Errorf("Expected status 500, got %d", rr1.Code)
+	}
+
+	// Case 2: File is binary, not typst
+	bf, _ := domainFile.NewBinaryFile(fileID, projectID, "img.png", []byte{1}, time.Now())
+	req2 := httptest.NewRequestWithContext(testContext(userID, nil, bf), http.MethodGet, "/files/typst/"+fileID.String(), nil)
+	rr2 := httptest.NewRecorder()
+	handler.GetTypstFile(rr2, req2)
+	if rr2.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400, got %d", rr2.Code)
+	}
+}
+
+func TestFileHandler_GetBinaryFile_Errors(t *testing.T) {
+	t.Parallel()
+
+	userID := uuid.New()
+	projectID := uuid.New()
+	fileID := uuid.New()
+
+	mockFile := &mockFileUseCase{}
+	handler := NewHandler(mockFile, mockFile)
+
+	// Case 1: Missing file context
+	req1 := httptest.NewRequestWithContext(testContext(userID, nil, nil), http.MethodGet, "/files/binary/"+fileID.String(), nil)
+	rr1 := httptest.NewRecorder()
+	handler.GetBinaryFile(rr1, req1)
+	if rr1.Code != http.StatusInternalServerError {
+		t.Errorf("Expected status 500, got %d", rr1.Code)
+	}
+
+	// Case 2: File is typst, not binary
+	tf, _ := domainFile.NewTypstFile(fileID, projectID, docTyp, nil, nil, time.Now())
+	req2 := httptest.NewRequestWithContext(testContext(userID, nil, tf), http.MethodGet, "/files/binary/"+fileID.String(), nil)
+	rr2 := httptest.NewRecorder()
+	handler.GetBinaryFile(rr2, req2)
+	if rr2.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400, got %d", rr2.Code)
+	}
+}
+
+func TestFileHandler_GetBinaryFileRaw_Errors(t *testing.T) {
+	t.Parallel()
+
+	userID := uuid.New()
+	projectID := uuid.New()
+	fileID := uuid.New()
+
+	mockFile := &mockFileUseCase{}
+	handler := NewHandler(mockFile, mockFile)
+
+	// Case 1: Missing file context
+	req1 := httptest.NewRequestWithContext(testContext(userID, nil, nil), http.MethodGet, "/files/binary/"+fileID.String()+"/raw", nil)
+	rr1 := httptest.NewRecorder()
+	handler.GetBinaryFileRaw(rr1, req1)
+	if rr1.Code != http.StatusInternalServerError {
+		t.Errorf("Expected status 500, got %d", rr1.Code)
+	}
+
+	// Case 2: File is typst, not binary
+	tf, _ := domainFile.NewTypstFile(fileID, projectID, docTyp, nil, nil, time.Now())
+	req2 := httptest.NewRequestWithContext(testContext(userID, nil, tf), http.MethodGet, "/files/binary/"+fileID.String()+"/raw", nil)
+	rr2 := httptest.NewRecorder()
+	handler.GetBinaryFileRaw(rr2, req2)
+	if rr2.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400, got %d", rr2.Code)
+	}
+}
+
+func TestFileHandler_ApplyFileChanges_Errors(t *testing.T) {
+	t.Parallel()
+
+	userID := uuid.New()
+	projectID := uuid.New()
+	fileID := uuid.New()
+
+	mockFile := &mockFileUseCase{
+		applyFileChangesFunc: func(ctx context.Context, req syncApp.ApplyFileChangesRequest) (*domainFile.TypstFile, error) {
+			return nil, errors.New("apply error")
+		},
+	}
+	handler := NewHandler(mockFile, mockFile)
+
+	// Case 1: Missing file context
+	req1 := httptest.NewRequestWithContext(testContext(userID, nil, nil), http.MethodPost, "/files/typst/"+fileID.String()+"/changes", bytes.NewBufferString("{}"))
+	rr1 := httptest.NewRecorder()
+	handler.ApplyFileChanges(rr1, req1)
+	if rr1.Code != http.StatusInternalServerError {
+		t.Errorf("Expected status 500, got %d", rr1.Code)
+	}
+
+	// Case 2: Not a Typst file
+	bf, _ := domainFile.NewBinaryFile(fileID, projectID, "img.png", []byte{1}, time.Now())
+	req2 := httptest.NewRequestWithContext(testContext(userID, nil, bf), http.MethodPost, "/files/typst/"+fileID.String()+"/changes", bytes.NewBufferString("{}"))
+	rr2 := httptest.NewRecorder()
+	handler.ApplyFileChanges(rr2, req2)
+	if rr2.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400, got %d", rr2.Code)
+	}
+
+	// Case 3: Invalid body JSON
+	tf, _ := domainFile.NewTypstFile(fileID, projectID, docTyp, nil, nil, time.Now())
+	req3 := httptest.NewRequestWithContext(testContext(userID, nil, tf), http.MethodPost, "/files/typst/"+fileID.String()+"/changes", bytes.NewBufferString("invalid json"))
+	rr3 := httptest.NewRecorder()
+	handler.ApplyFileChanges(rr3, req3)
+	if rr3.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400, got %d", rr3.Code)
+	}
+
+	// Case 4: Service error
+	reqBody, _ := json.Marshal(jsonApplyFileChangesRequest{Delta: []byte("delta")})
+	req4 := httptest.NewRequestWithContext(testContext(userID, nil, tf), http.MethodPost, "/files/typst/"+fileID.String()+"/changes", bytes.NewBuffer(reqBody))
+	rr4 := httptest.NewRecorder()
+	handler.ApplyFileChanges(rr4, req4)
+	if rr4.Code != http.StatusInternalServerError {
+		t.Errorf("Expected status 500, got %d", rr4.Code)
+	}
+}
+
+func TestFileHandler_DeleteFile_Errors(t *testing.T) {
+	t.Parallel()
+
+	userID := uuid.New()
+	projectID := uuid.New()
+	otherProjectID := uuid.New()
+	fileID := uuid.New()
+
+	p, _ := domainProject.NewProject(projectID, []uuid.UUID{userID}, "Project", time.Now())
+	tf, _ := domainFile.NewTypstFile(fileID, otherProjectID, docTyp, nil, nil, time.Now())
+
+	mockFile := &mockFileUseCase{
+		deleteFileFunc: func(ctx context.Context, fid uuid.UUID) error {
+			return errors.New("delete error")
+		},
+	}
+	handler := NewHandler(mockFile, mockFile)
+
+	// Case 1: Missing context
+	req1 := httptest.NewRequestWithContext(testContext(userID, nil, nil), http.MethodDelete, "/projects/"+projectID.String()+"/files/"+fileID.String(), nil)
+	rr1 := httptest.NewRecorder()
+	handler.DeleteFile(rr1, req1)
+	if rr1.Code != http.StatusInternalServerError {
+		t.Errorf("Expected status 500, got %d", rr1.Code)
+	}
+
+	// Case 2: Project mismatch
+	req2 := httptest.NewRequestWithContext(testContext(userID, p, tf), http.MethodDelete, "/projects/"+projectID.String()+"/files/"+fileID.String(), nil)
+	rr2 := httptest.NewRecorder()
+	handler.DeleteFile(rr2, req2)
+	if rr2.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400, got %d", rr2.Code)
+	}
+
+	// Case 3: Service error
+	matchingTF, _ := domainFile.NewTypstFile(fileID, projectID, docTyp, nil, nil, time.Now())
+	req3 := httptest.NewRequestWithContext(testContext(userID, p, matchingTF), http.MethodDelete, "/projects/"+projectID.String()+"/files/"+fileID.String(), nil)
+	rr3 := httptest.NewRecorder()
+	handler.DeleteFile(rr3, req3)
+	if rr3.Code != http.StatusInternalServerError {
+		t.Errorf("Expected status 500, got %d", rr3.Code)
+	}
+}
+
+func TestFileHandler_UploadFile_RequestErrors(t *testing.T) {
+	t.Parallel()
+
+	userID := uuid.New()
+	projectID := uuid.New()
+	p, _ := domainProject.NewProject(projectID, []uuid.UUID{userID}, "Project", time.Now())
+
+	mockFile := &mockFileUseCase{}
+	handler := NewHandler(mockFile, mockFile)
+
+	// Case 1: Missing project context
+	req1 := httptest.NewRequestWithContext(testContext(userID, nil, nil), http.MethodPost, "/projects/"+projectID.String()+"/files", bytes.NewBufferString("{}"))
+	rr1 := httptest.NewRecorder()
+	handler.UploadFile(rr1, req1)
+	if rr1.Code != http.StatusInternalServerError {
+		t.Errorf("Expected status 500, got %d", rr1.Code)
+	}
+
+	// Case 2: Unsupported Content-Type
+	req2 := httptest.NewRequestWithContext(testContext(userID, p, nil), http.MethodPost, "/projects/"+projectID.String()+"/files", bytes.NewBufferString("text"))
+	req2.Header.Set("Content-Type", "text/plain")
+	rr2 := httptest.NewRecorder()
+	handler.UploadFile(rr2, req2)
+	if rr2.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400, got %d", rr2.Code)
+	}
+
+	// Case 3: Invalid JSON body
+	req3 := httptest.NewRequestWithContext(testContext(userID, p, nil), http.MethodPost, "/projects/"+projectID.String()+"/files", bytes.NewBufferString("invalid json"))
+	req3.Header.Set("Content-Type", "application/json")
+	rr3 := httptest.NewRecorder()
+	handler.UploadFile(rr3, req3)
+	if rr3.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400, got %d", rr3.Code)
+	}
+
+	// Case 4: Empty file name
+	reqBodyEmptyName, _ := json.Marshal(jsonUploadFileRequest{
+		ID:   uuid.New().String(),
+		Name: "",
+	})
+	req4Empty := httptest.NewRequestWithContext(testContext(userID, p, nil), http.MethodPost, "/projects/"+projectID.String()+"/files", bytes.NewBuffer(reqBodyEmptyName))
+	req4Empty.Header.Set("Content-Type", "application/json")
+	rr4Empty := httptest.NewRecorder()
+	handler.UploadFile(rr4Empty, req4Empty)
+	if rr4Empty.Code != http.StatusBadRequest {
+		t.Errorf("Expected status 400, got %d", rr4Empty.Code)
+	}
+}
+
+func TestFileHandler_UploadFile_ServiceErrors(t *testing.T) {
+	t.Parallel()
+
+	userID := uuid.New()
+	projectID := uuid.New()
+	p, _ := domainProject.NewProject(projectID, []uuid.UUID{userID}, "Project", time.Now())
+
+	mockFile := &mockFileUseCase{
+		uploadTypstFileFunc: func(ctx context.Context, req *fileApp.UploadTypstFileRequest) (*domainFile.TypstFile, error) {
+			return nil, errors.New("upload typst error")
+		},
+		uploadBinaryFileFunc: func(ctx context.Context, req *fileApp.UploadBinaryFileRequest) (*domainFile.BinaryFile, error) {
+			return nil, errors.New("upload binary error")
+		},
+	}
+	handler := NewHandler(mockFile, mockFile)
+
+	// Case 1: Upload typst service error
+	reqBody, _ := json.Marshal(jsonUploadFileRequest{
+		ID:   uuid.New().String(),
+		Name: testTypxml,
+	})
+	req1 := httptest.NewRequestWithContext(testContext(userID, p, nil), http.MethodPost, "/projects/"+projectID.String()+"/files", bytes.NewBuffer(reqBody))
+	req1.Header.Set("Content-Type", "application/json")
+	rr1 := httptest.NewRecorder()
+	handler.UploadFile(rr1, req1)
+	if rr1.Code != http.StatusInternalServerError {
+		t.Errorf("Expected status 500, got %d", rr1.Code)
+	}
+
+	// Case 2: Upload binary service error
+	reqBodyBin, _ := json.Marshal(jsonUploadFileRequest{
+		ID:   uuid.New().String(),
+		Name: "test.png",
+	})
+	req2 := httptest.NewRequestWithContext(testContext(userID, p, nil), http.MethodPost, "/projects/"+projectID.String()+"/files", bytes.NewBuffer(reqBodyBin))
+	req2.Header.Set("Content-Type", "application/json")
+	rr2 := httptest.NewRecorder()
+	handler.UploadFile(rr2, req2)
+	if rr2.Code != http.StatusInternalServerError {
+		t.Errorf("Expected status 500, got %d", rr2.Code)
+	}
+
+	// Case 3: Invalid typxml XML payload
+	reqBodyInvalidXML, _ := json.Marshal(jsonUploadFileRequest{
+		ID:      uuid.New().String(),
+		Name:    testTypxml,
+		Content: []byte("<invalid-xml>"),
+	})
+	req3 := httptest.NewRequestWithContext(testContext(userID, p, nil), http.MethodPost, "/projects/"+projectID.String()+"/files", bytes.NewBuffer(reqBodyInvalidXML))
+	req3.Header.Set("Content-Type", "application/json")
+	rr3 := httptest.NewRecorder()
+	handler.UploadFile(rr3, req3)
+	if rr3.Code != http.StatusInternalServerError {
+		t.Errorf("Expected status 500, got %d", rr3.Code)
 	}
 }

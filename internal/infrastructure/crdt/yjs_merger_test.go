@@ -253,3 +253,71 @@ func TestYjsMerger_ComputeDelta(t *testing.T) {
 		t.Errorf("expected text %q, got %q", "Hello World", txt)
 	}
 }
+
+func TestYjsMerger_SyncMetadata_WithYMap(t *testing.T) {
+	t.Parallel()
+
+	merger := NewYjsMerger()
+	fileID := uuid.New()
+	projectID := uuid.New()
+
+	serverEntry, _ := domainEntry.NewEntry(fileID, "main.typ", domainFile.TypeTypst, false, time.Now())
+	serverMeta, _ := domainMeta.NewMetadata(projectID, []*domainEntry.Entry{serverEntry})
+
+	clientDoc := crdt.New()
+	clientDoc.Transact(func(txn *crdt.Transaction) {
+		filesMap := txn.GetMap("files")
+		nested := crdt.NewMapPrelim()
+		nested.Set(txn, "id", fileID.String())
+		nested.Set(txn, "name", "from_ymap.typ")
+		nested.Set(txn, "type", string(domainFile.TypeTypst))
+		nested.Set(txn, "is_deleted", true)
+		filesMap.Set(txn, fileID.String(), nested)
+	})
+
+	clientDelta := clientDoc.EncodeStateAsUpdate()
+
+	_, updatedMeta, err := merger.SyncMetadata(projectID, serverMeta, clientDelta, nil)
+	if err != nil {
+		t.Fatalf("failed to sync updated metadata with YMap: %v", err)
+	}
+
+	updatedEntry, exists := updatedMeta.Get(fileID)
+	if !exists {
+		t.Fatal("expected entry to exist in metadata")
+	}
+	if updatedEntry.Name() != "from_ymap.typ" || !updatedEntry.IsDeleted() {
+		t.Errorf("unexpected entry values: %+v", updatedEntry)
+	}
+}
+
+func TestYjsMerger_MergeFile_WithYMapBlocks(t *testing.T) {
+	t.Parallel()
+
+	merger := NewYjsMerger()
+	doc := crdt.New()
+	blockID := uuid.New()
+
+	doc.Transact(func(txn *crdt.Transaction) {
+		arr := txn.GetArray("blocks")
+		nested := crdt.NewMapPrelim()
+		nested.Set(txn, "id", blockID.String())
+		nested.Set(txn, "name", "Header Block")
+		nested.Set(txn, "content", "Direct content")
+		arr.PushType(txn, nested)
+	})
+
+	delta := doc.EncodeStateAsUpdate()
+
+	_, blocks, err := merger.MergeFile(nil, delta)
+	if err != nil {
+		t.Fatalf("failed to merge file with YMap block: %v", err)
+	}
+
+	if len(blocks) != 1 {
+		t.Fatalf("expected 1 block, got %d", len(blocks))
+	}
+	if blocks[0].ID() != blockID || blocks[0].Name() != "Header Block" || blocks[0].Content() != "Direct content" {
+		t.Errorf("unexpected block values: %+v", blocks[0])
+	}
+}

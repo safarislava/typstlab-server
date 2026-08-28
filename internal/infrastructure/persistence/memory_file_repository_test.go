@@ -124,4 +124,34 @@ func TestMemoryFileRepository_Delete(t *testing.T) {
 	if delErr2 == nil {
 		t.Error("expected error deleting non-existent file, got nil")
 	}
+
+	deleted, isDelErr := repo.IsDeleted(ctx, fileID)
+	if isDelErr != nil {
+		t.Fatalf("unexpected error checking IsDeleted: %v", isDelErr)
+	}
+	if !deleted {
+		t.Error("expected file to be marked as deleted")
+	}
+}
+
+func TestMemoryFileRepository_FindEntriesByProjectID(t *testing.T) {
+	t.Parallel()
+
+	repo := NewMemoryFileRepository()
+	ctx := context.Background()
+
+	projectID := uuid.New()
+	fileID1 := uuid.New()
+	fileID2 := uuid.New()
+
+	createAndSaveTestTypstFile(ctx, t, repo, projectID, fileID1)
+	createAndSaveTestBinaryFile(ctx, t, repo, projectID, fileID2)
+
+	entries, err := repo.FindEntriesByProjectID(ctx, projectID)
+	if err != nil {
+		t.Fatalf("failed to find entries by project id: %v", err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("expected 2 entries, got %d", len(entries))
+	}
 }
