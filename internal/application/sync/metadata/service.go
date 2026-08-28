@@ -9,11 +9,11 @@ import (
 	domainMeta "github.com/safarislava/typstlab-server/internal/domain/metadata"
 )
 
-type MetadataManager interface {
+type Manager interface {
 	GetMetadata(ctx context.Context, projectID uuid.UUID) (*domainMeta.Metadata, error)
 }
 
-type MetadataSyncer interface {
+type Syncer interface {
 	SyncMetadata(
 		projectID uuid.UUID,
 		currentMeta *domainMeta.Metadata,
@@ -23,11 +23,11 @@ type MetadataSyncer interface {
 }
 
 type Service struct {
-	metaManager MetadataManager
-	syncer      MetadataSyncer
+	metaManager Manager
+	syncer      Syncer
 }
 
-func NewService(metaManager MetadataManager, syncer MetadataSyncer) *Service {
+func NewService(metaManager Manager, syncer Syncer) *Service {
 	return &Service{
 		metaManager: metaManager,
 		syncer:      syncer,

@@ -31,7 +31,7 @@ type ApplyFileChangesRequest struct {
 	Delta  []byte
 }
 
-type FileManager interface {
+type Manager interface {
 	GetTypstFile(ctx context.Context, fileID uuid.UUID) (*domainFile.TypstFile, error)
 	SaveTypstFile(ctx context.Context, f *domainFile.TypstFile) error
 	ListFilesByProject(ctx context.Context, projectID uuid.UUID) ([]domainFile.File, error)
@@ -39,7 +39,7 @@ type FileManager interface {
 	DeleteFile(ctx context.Context, fileID uuid.UUID) error
 }
 
-type FileMerger interface {
+type Merger interface {
 	MergeFile(state, delta []byte) (newState []byte, updatedBlocks []block.Block, err error)
 }
 
@@ -48,14 +48,14 @@ type DeltaCalculator interface {
 }
 
 type Service struct {
-	fileManager     FileManager
-	fileMerger      FileMerger
+	fileManager     Manager
+	fileMerger      Merger
 	deltaCalculator DeltaCalculator
 }
 
 func NewService(
-	fileManager FileManager,
-	fileMerger FileMerger,
+	fileManager Manager,
+	fileMerger Merger,
 	deltaCalculator DeltaCalculator,
 ) *Service {
 	return &Service{
