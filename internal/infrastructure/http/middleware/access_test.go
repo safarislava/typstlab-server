@@ -34,21 +34,24 @@ func (m *mockProjectUseCaseForAccess) Get(ctx context.Context, projectID uuid.UU
 	return nil, errors.New(errProjectNotFound)
 }
 
-type mockFileUseCaseForAccess struct {
-	getTypstFileFunc  func(ctx context.Context, fileID uuid.UUID) (*domainFile.TypstFile, error)
-	getBinaryFileFunc func(ctx context.Context, fileID uuid.UUID) (*domainFile.BinaryFile, error)
+type mockTypstUseCaseForAccess struct {
+	getByIDFunc func(ctx context.Context, fileID uuid.UUID) (*domainFile.TypstFile, error)
 }
 
-func (m *mockFileUseCaseForAccess) GetTypstFile(ctx context.Context, fileID uuid.UUID) (*domainFile.TypstFile, error) {
-	if m.getTypstFileFunc != nil {
-		return m.getTypstFileFunc(ctx, fileID)
+func (m *mockTypstUseCaseForAccess) GetByID(ctx context.Context, fileID uuid.UUID) (*domainFile.TypstFile, error) {
+	if m.getByIDFunc != nil {
+		return m.getByIDFunc(ctx, fileID)
 	}
 	return nil, errors.New("typst file not found")
 }
 
-func (m *mockFileUseCaseForAccess) GetBinaryFile(ctx context.Context, fileID uuid.UUID) (*domainFile.BinaryFile, error) {
-	if m.getBinaryFileFunc != nil {
-		return m.getBinaryFileFunc(ctx, fileID)
+type mockBinaryUseCaseForAccess struct {
+	getByIDFunc func(ctx context.Context, fileID uuid.UUID) (*domainFile.BinaryFile, error)
+}
+
+func (m *mockBinaryUseCaseForAccess) GetByID(ctx context.Context, fileID uuid.UUID) (*domainFile.BinaryFile, error) {
+	if m.getByIDFunc != nil {
+		return m.getByIDFunc(ctx, fileID)
 	}
 	return nil, errors.New("binary file not found")
 }
@@ -57,24 +60,28 @@ func TestNewAccessMiddleware(t *testing.T) {
 	t.Parallel()
 
 	projSvc := &mockProjectUseCaseForAccess{}
-	fileSvc := &mockFileUseCaseForAccess{}
+	typstSvc := &mockTypstUseCaseForAccess{}
+	binarySvc := &mockBinaryUseCaseForAccess{}
 
-	mw := NewAccessMiddleware(projSvc, fileSvc)
+	mw := NewAccessMiddleware(projSvc, typstSvc, binarySvc)
 	if mw == nil {
 		t.Fatal("Expected non-nil AccessMiddleware")
 	}
 	if mw.projectService != projSvc {
 		t.Error("Expected projectService to match injected mock")
 	}
-	if mw.fileService != fileSvc {
-		t.Error("Expected fileService to match injected mock")
+	if mw.typstService != typstSvc {
+		t.Error("Expected typstService to match injected mock")
+	}
+	if mw.binaryService != binarySvc {
+		t.Error("Expected binaryService to match injected mock")
 	}
 }
 
 func TestAccessMiddleware_ProjectAccess_Unauthorized(t *testing.T) {
 	t.Parallel()
 
-	mw := NewAccessMiddleware(&mockProjectUseCaseForAccess{}, &mockFileUseCaseForAccess{})
+	mw := NewAccessMiddleware(&mockProjectUseCaseForAccess{}, &mockTypstUseCaseForAccess{}, &mockBinaryUseCaseForAccess{})
 	r := chi.NewRouter()
 	r.With(mw.ProjectAccess).Get("/projects/{projectID}", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -96,7 +103,7 @@ func TestAccessMiddleware_ProjectAccess_Unauthorized(t *testing.T) {
 func TestAccessMiddleware_ProjectAccess_InvalidProjectID(t *testing.T) {
 	t.Parallel()
 
-	mw := NewAccessMiddleware(&mockProjectUseCaseForAccess{}, &mockFileUseCaseForAccess{})
+	mw := NewAccessMiddleware(&mockProjectUseCaseForAccess{}, &mockTypstUseCaseForAccess{}, &mockBinaryUseCaseForAccess{})
 	r := chi.NewRouter()
 	r.With(mw.ProjectAccess).Get("/projects/{projectID}", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -125,7 +132,7 @@ func TestAccessMiddleware_ProjectAccess_ProjectNotFound(t *testing.T) {
 		},
 	}
 
-	mw := NewAccessMiddleware(projSvc, &mockFileUseCaseForAccess{})
+	mw := NewAccessMiddleware(projSvc, &mockTypstUseCaseForAccess{}, &mockBinaryUseCaseForAccess{})
 	r := chi.NewRouter()
 	r.With(mw.ProjectAccess).Get("/projects/{projectID}", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -162,7 +169,7 @@ func TestAccessMiddleware_ProjectAccess_Forbidden(t *testing.T) {
 		},
 	}
 
-	mw := NewAccessMiddleware(projSvc, &mockFileUseCaseForAccess{})
+	mw := NewAccessMiddleware(projSvc, &mockTypstUseCaseForAccess{}, &mockBinaryUseCaseForAccess{})
 	r := chi.NewRouter()
 	r.With(mw.ProjectAccess).Get("/projects/{projectID}", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -201,7 +208,7 @@ func TestAccessMiddleware_ProjectAccess_Success(t *testing.T) {
 	var ctxProject *domainProject.Project
 	var ok bool
 
-	mw := NewAccessMiddleware(projSvc, &mockFileUseCaseForAccess{})
+	mw := NewAccessMiddleware(projSvc, &mockTypstUseCaseForAccess{}, &mockBinaryUseCaseForAccess{})
 	r := chi.NewRouter()
 	r.With(mw.ProjectAccess).Get("/projects/{projectID}", func(w http.ResponseWriter, r *http.Request) {
 		ctxProject, ok = ProjectFromContext(r.Context())
@@ -228,7 +235,7 @@ func TestAccessMiddleware_ProjectAccess_Success(t *testing.T) {
 func TestAccessMiddleware_FileAccess_Unauthorized(t *testing.T) {
 	t.Parallel()
 
-	mw := NewAccessMiddleware(&mockProjectUseCaseForAccess{}, &mockFileUseCaseForAccess{})
+	mw := NewAccessMiddleware(&mockProjectUseCaseForAccess{}, &mockTypstUseCaseForAccess{}, &mockBinaryUseCaseForAccess{})
 	r := chi.NewRouter()
 	r.With(mw.FileAccess).Get("/files/{fileID}", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -250,7 +257,7 @@ func TestAccessMiddleware_FileAccess_Unauthorized(t *testing.T) {
 func TestAccessMiddleware_FileAccess_InvalidFileID(t *testing.T) {
 	t.Parallel()
 
-	mw := NewAccessMiddleware(&mockProjectUseCaseForAccess{}, &mockFileUseCaseForAccess{})
+	mw := NewAccessMiddleware(&mockProjectUseCaseForAccess{}, &mockTypstUseCaseForAccess{}, &mockBinaryUseCaseForAccess{})
 	r := chi.NewRouter()
 	r.With(mw.FileAccess).Get("/files/{fileID}", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -273,16 +280,18 @@ func TestAccessMiddleware_FileAccess_InvalidFileID(t *testing.T) {
 func TestAccessMiddleware_FileAccess_FileNotFound(t *testing.T) {
 	t.Parallel()
 
-	fileSvc := &mockFileUseCaseForAccess{
-		getTypstFileFunc: func(ctx context.Context, fileID uuid.UUID) (*domainFile.TypstFile, error) {
+	typstSvc := &mockTypstUseCaseForAccess{
+		getByIDFunc: func(ctx context.Context, fileID uuid.UUID) (*domainFile.TypstFile, error) {
 			return nil, errors.New("not found")
 		},
-		getBinaryFileFunc: func(ctx context.Context, fileID uuid.UUID) (*domainFile.BinaryFile, error) {
+	}
+	binarySvc := &mockBinaryUseCaseForAccess{
+		getByIDFunc: func(ctx context.Context, fileID uuid.UUID) (*domainFile.BinaryFile, error) {
 			return nil, errors.New("not found")
 		},
 	}
 
-	mw := NewAccessMiddleware(&mockProjectUseCaseForAccess{}, fileSvc)
+	mw := NewAccessMiddleware(&mockProjectUseCaseForAccess{}, typstSvc, binarySvc)
 	r := chi.NewRouter()
 	r.With(mw.FileAccess).Get("/files/{fileID}", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -309,8 +318,8 @@ func TestAccessMiddleware_FileAccess_ProjectNotFound(t *testing.T) {
 	projectID := uuid.New()
 	tf, _ := domainFile.NewTypstFile(fileID, projectID, docTypstName, nil, nil, time.Now())
 
-	fileSvc := &mockFileUseCaseForAccess{
-		getTypstFileFunc: func(ctx context.Context, fid uuid.UUID) (*domainFile.TypstFile, error) {
+	typstSvc := &mockTypstUseCaseForAccess{
+		getByIDFunc: func(ctx context.Context, fid uuid.UUID) (*domainFile.TypstFile, error) {
 			if fid == fileID {
 				return tf, nil
 			}
@@ -323,7 +332,7 @@ func TestAccessMiddleware_FileAccess_ProjectNotFound(t *testing.T) {
 		},
 	}
 
-	mw := NewAccessMiddleware(projSvc, fileSvc)
+	mw := NewAccessMiddleware(projSvc, typstSvc, &mockBinaryUseCaseForAccess{})
 	r := chi.NewRouter()
 	r.With(mw.FileAccess).Get("/files/{fileID}", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -354,8 +363,8 @@ func TestAccessMiddleware_FileAccess_Forbidden(t *testing.T) {
 	tf, _ := domainFile.NewTypstFile(fileID, projectID, docTypstName, nil, nil, time.Now())
 	p, _ := domainProject.NewProject(projectID, []uuid.UUID{otherUserID}, testProjectName, time.Now())
 
-	fileSvc := &mockFileUseCaseForAccess{
-		getTypstFileFunc: func(ctx context.Context, fid uuid.UUID) (*domainFile.TypstFile, error) {
+	typstSvc := &mockTypstUseCaseForAccess{
+		getByIDFunc: func(ctx context.Context, fid uuid.UUID) (*domainFile.TypstFile, error) {
 			if fid == fileID {
 				return tf, nil
 			}
@@ -371,7 +380,7 @@ func TestAccessMiddleware_FileAccess_Forbidden(t *testing.T) {
 		},
 	}
 
-	mw := NewAccessMiddleware(projSvc, fileSvc)
+	mw := NewAccessMiddleware(projSvc, typstSvc, &mockBinaryUseCaseForAccess{})
 	r := chi.NewRouter()
 	r.With(mw.FileAccess).Get("/files/{fileID}", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -401,8 +410,8 @@ func TestAccessMiddleware_FileAccess_Success_TypstFile(t *testing.T) {
 	tf, _ := domainFile.NewTypstFile(fileID, projectID, docTypstName, nil, nil, time.Now())
 	p, _ := domainProject.NewProject(projectID, []uuid.UUID{userID}, testProjectName, time.Now())
 
-	fileSvc := &mockFileUseCaseForAccess{
-		getTypstFileFunc: func(ctx context.Context, fid uuid.UUID) (*domainFile.TypstFile, error) {
+	typstSvc := &mockTypstUseCaseForAccess{
+		getByIDFunc: func(ctx context.Context, fid uuid.UUID) (*domainFile.TypstFile, error) {
 			if fid == fileID {
 				return tf, nil
 			}
@@ -421,7 +430,7 @@ func TestAccessMiddleware_FileAccess_Success_TypstFile(t *testing.T) {
 	var ctxFile domainFile.File
 	var ok bool
 
-	mw := NewAccessMiddleware(projSvc, fileSvc)
+	mw := NewAccessMiddleware(projSvc, typstSvc, &mockBinaryUseCaseForAccess{})
 	r := chi.NewRouter()
 	r.With(mw.FileAccess).Get("/files/{fileID}", func(w http.ResponseWriter, r *http.Request) {
 		ctxFile, ok = FileFromContext(r.Context())
@@ -455,11 +464,13 @@ func TestAccessMiddleware_FileAccess_Success_BinaryFile(t *testing.T) {
 	bf, _ := domainFile.NewBinaryFile(fileID, projectID, "image.png", []byte{1, 2, 3}, time.Now())
 	p, _ := domainProject.NewProject(projectID, []uuid.UUID{userID}, testProjectName, time.Now())
 
-	fileSvc := &mockFileUseCaseForAccess{
-		getTypstFileFunc: func(ctx context.Context, fid uuid.UUID) (*domainFile.TypstFile, error) {
+	typstSvc := &mockTypstUseCaseForAccess{
+		getByIDFunc: func(ctx context.Context, fid uuid.UUID) (*domainFile.TypstFile, error) {
 			return nil, errors.New("not a typst file")
 		},
-		getBinaryFileFunc: func(ctx context.Context, fid uuid.UUID) (*domainFile.BinaryFile, error) {
+	}
+	binarySvc := &mockBinaryUseCaseForAccess{
+		getByIDFunc: func(ctx context.Context, fid uuid.UUID) (*domainFile.BinaryFile, error) {
 			if fid == fileID {
 				return bf, nil
 			}
@@ -478,7 +489,7 @@ func TestAccessMiddleware_FileAccess_Success_BinaryFile(t *testing.T) {
 	var ctxFile domainFile.File
 	var ok bool
 
-	mw := NewAccessMiddleware(projSvc, fileSvc)
+	mw := NewAccessMiddleware(projSvc, typstSvc, binarySvc)
 	r := chi.NewRouter()
 	r.With(mw.FileAccess).Get("/files/{fileID}", func(w http.ResponseWriter, r *http.Request) {
 		ctxFile, ok = FileFromContext(r.Context())

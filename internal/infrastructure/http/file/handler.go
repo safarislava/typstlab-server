@@ -11,7 +11,8 @@ import (
 
 	"github.com/google/uuid"
 
-	fileApp "github.com/safarislava/typstlab-server/internal/application/file"
+	binaryApp "github.com/safarislava/typstlab-server/internal/application/file/binary"
+	typstApp "github.com/safarislava/typstlab-server/internal/application/file/typst"
 	syncApp "github.com/safarislava/typstlab-server/internal/application/sync"
 	domainBlock "github.com/safarislava/typstlab-server/internal/domain/block"
 	domainFile "github.com/safarislava/typstlab-server/internal/domain/file"
@@ -19,9 +20,15 @@ import (
 	"github.com/safarislava/typstlab-server/internal/infrastructure/serialization"
 )
 
-type Service interface {
-	UploadTypstFile(ctx context.Context, req *fileApp.UploadTypstFileRequest) (*domainFile.TypstFile, error)
-	UploadBinaryFile(ctx context.Context, req *fileApp.UploadBinaryFileRequest) (*domainFile.BinaryFile, error)
+type TypstService interface {
+	Upload(ctx context.Context, req *typstApp.UploadRequest) (*domainFile.TypstFile, error)
+}
+
+type BinaryService interface {
+	Upload(ctx context.Context, req *binaryApp.UploadRequest) (*domainFile.BinaryFile, error)
+}
+
+type FileService interface {
 	ListFilesByProject(ctx context.Context, projectID uuid.UUID) ([]domainFile.File, error)
 	DeleteFile(ctx context.Context, fileID uuid.UUID) error
 }
@@ -31,12 +38,21 @@ type ChangeApplier interface {
 }
 
 type Handler struct {
-	fileService   Service
+	typstService  TypstService
+	binaryService BinaryService
+	fileService   FileService
 	changeApplier ChangeApplier
 }
 
-func NewHandler(fileService Service, changeApplier ChangeApplier) *Handler {
+func NewHandler(
+	typstService TypstService,
+	binaryService BinaryService,
+	fileService FileService,
+	changeApplier ChangeApplier,
+) *Handler {
 	return &Handler{
+		typstService:  typstService,
+		binaryService: binaryService,
 		fileService:   fileService,
 		changeApplier: changeApplier,
 	}
@@ -209,22 +225,22 @@ func (h *Handler) UploadFile(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		req := fileApp.UploadTypstFileRequest{
+		req := typstApp.UploadRequest{
 			ID:        id,
 			ProjectID: p.ID(),
 			Name:      name,
 			State:     state,
 			Blocks:    blocks,
 		}
-		f, err = h.fileService.UploadTypstFile(r.Context(), &req)
+		f, err = h.typstService.Upload(r.Context(), &req)
 	} else {
-		req := fileApp.UploadBinaryFileRequest{
+		req := binaryApp.UploadRequest{
 			ID:        id,
 			ProjectID: p.ID(),
 			Name:      name,
 			Content:   content,
 		}
-		f, err = h.fileService.UploadBinaryFile(r.Context(), &req)
+		f, err = h.binaryService.Upload(r.Context(), &req)
 	}
 
 	if err != nil {

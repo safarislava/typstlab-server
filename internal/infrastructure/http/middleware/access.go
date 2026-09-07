@@ -20,20 +20,29 @@ type ProjectService interface {
 	Get(ctx context.Context, projectID uuid.UUID) (*domainProject.Project, error)
 }
 
-type FileService interface {
-	GetTypstFile(ctx context.Context, fileID uuid.UUID) (*domainFile.TypstFile, error)
-	GetBinaryFile(ctx context.Context, fileID uuid.UUID) (*domainFile.BinaryFile, error)
+type TypstService interface {
+	GetByID(ctx context.Context, fileID uuid.UUID) (*domainFile.TypstFile, error)
+}
+
+type BinaryService interface {
+	GetByID(ctx context.Context, fileID uuid.UUID) (*domainFile.BinaryFile, error)
 }
 
 type AccessMiddleware struct {
 	projectService ProjectService
-	fileService    FileService
+	typstService   TypstService
+	binaryService  BinaryService
 }
 
-func NewAccessMiddleware(projectService ProjectService, fileService FileService) *AccessMiddleware {
+func NewAccessMiddleware(
+	projectService ProjectService,
+	typstService TypstService,
+	binaryService BinaryService,
+) *AccessMiddleware {
 	return &AccessMiddleware{
 		projectService: projectService,
-		fileService:    fileService,
+		typstService:   typstService,
+		binaryService:  binaryService,
 	}
 }
 
@@ -72,10 +81,10 @@ func (m *AccessMiddleware) ProjectAccess(next http.Handler) http.Handler {
 }
 
 func (m *AccessMiddleware) findFile(ctx context.Context, fileID uuid.UUID) (domainFile.File, error) {
-	if tf, err := m.fileService.GetTypstFile(ctx, fileID); err == nil {
+	if tf, err := m.typstService.GetByID(ctx, fileID); err == nil {
 		return tf, nil
 	}
-	if bf, err := m.fileService.GetBinaryFile(ctx, fileID); err == nil {
+	if bf, err := m.binaryService.GetByID(ctx, fileID); err == nil {
 		return bf, nil
 	}
 	return nil, domainFile.ErrFileNotFound
