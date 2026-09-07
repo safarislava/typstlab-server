@@ -10,9 +10,9 @@
 
 ### Принципы протокола:
 1. **Клиентские UUID:** Все уникальные идентификаторы файлов (`id`) генерируются исключительно на стороне клиента (включая офлайн-режим).
-2. **Сервер — источник истины для имён:** При расхождении имени существующего файла сервер принудительно устанавливает актуальное имя (`rename`).
-3. **CRDT-синхронизация текста (Yjs):** Для текстовых файлов Typst передаётся только лёгкий вектор состояния `yjs_state_vector` (~10–100 байт). Сервер вычисляет недостающую дельту и передаёт её клиенту в инструкции `apply_changes`.
-4. **Единый эндпоинт загрузки:** Клиент загружает бинарные и Typst-файлы через единый метод `POST /projects/{projectID}/files`.
+2. **CRDT-синхронизация дерева файлов (Metadata):** Имена файлов, структура и статусы удаления синхронизируются через Yjs CRDT метаданных проекта (`metadata_delta` и `metadata_state_vector`) автоматически и бесконфликтно.
+3. **CRDT-синхронизация содержимого Typst (Yjs):** Для текстовых файлов Typst клиент передаёт карту векторов состояния `content_vectors` (`fileID -> state_vector`). Сервер вычисляет недостающую дельту и передаёт её клиенту в инструкции `apply_changes`.
+4. **Единый эндпоинт загрузки:** Клиент загружает созданные в офлайне бинарные и Typst-файлы через единый метод `POST /projects/{projectID}/files`.
 
 ---
 
@@ -23,19 +23,17 @@ sequenceDiagram
     participant Client as Клиент (Браузер / Приложение)
     participant Server as Сервер (Go typstlab-server)
     
-    Client->>Server: POST /projects/{projectID}/sync <br/> (Манифест со всеми файлами и Yjs State Vectors)
-    Note over Server: 1. Сравнение манифеста с БД проекта<br/>2. Проверка статусов удаления (IsDeleted)<br/>3. Расчет Yjs CRDT дельт (crdt.EncodeStateAsUpdateV1)<br/>4. Разрешение конфликтов имен
-    Server-->>Client: Response: 200 OK <br/> { instructions: [ {action: "...", file_id: "..."}, ... ] }
+    Client->>Server: POST /projects/{projectID}/sync <br/> (metadata_delta, metadata_state_vector, content_vectors)
+    Note over Server: 1. Применение client metadata_delta к CRDT дерева файлов<br/>2. Расчет серверной metadata_delta для клиента<br/>3. Применение мутаций метаданных к файлам сервера (rename/delete)<br/>4. Расчет Yjs CRDT дельт содержимого и инструкций контента
+    Server-->>Client: Response: 200 OK <br/> { metadata_delta: "...", instructions: [ ... ] }
     
-    Loop Выполнение инструкций на клиенте
+    Note over Client: Применение metadata_delta к локальному CRDT дереву файлов
+    
+    Loop Выполнение инструкций по контенту файлов
         alt Action == "download"
             Client->>Server: GET /files/typst/{fileID} или GET /files/binary/{fileID}/raw
         else Action == "upload"
             Client->>Server: POST /projects/{projectID}/files (со своим UUID)
-        else Action == "rename"
-            Note over Client: Переименование файла в локальной БД
-        else Action == "delete"
-            Note over Client: Удаление локального файла
         else Action == "apply_changes"
             Note over Client: Применение Yjs delta к локальному документу
         end
