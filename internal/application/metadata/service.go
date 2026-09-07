@@ -38,12 +38,3 @@ func (s *Service) GetMetadata(ctx context.Context, projectID uuid.UUID) (*domain
 
 	return meta, nil
 }
-
-// CreateMetadata creates a new Metadata aggregate from entries.
-func (s *Service) CreateMetadata(projectID uuid.UUID, entries []*domainEntry.Entry) (*domainMeta.Metadata, error) {
-	m, err := domainMeta.NewMetadata(projectID, entries)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create metadata aggregate: %w", err)
-	}
-	return m, nil
-}

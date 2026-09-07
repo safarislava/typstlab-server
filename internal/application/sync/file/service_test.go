@@ -14,32 +14,35 @@ import (
 	domainMeta "github.com/safarislava/typstlab-server/internal/domain/metadata"
 )
 
-type mockFileManager struct {
-	file       *domainFile.TypstFile
-	getErr     error
-	saveErr    error
-	listErr    error
-	renameErr  error
-	deleteErr  error
-	files      []domainFile.File
-	renamedIDs []uuid.UUID
-	deletedIDs []uuid.UUID
-	savedFile  *domainFile.TypstFile
+type mockTypstService struct {
+	file      *domainFile.TypstFile
+	getErr    error
+	saveErr   error
+	savedFile *domainFile.TypstFile
 }
 
-func (m *mockFileManager) GetTypstFile(_ context.Context, _ uuid.UUID) (*domainFile.TypstFile, error) {
+func (m *mockTypstService) GetByID(_ context.Context, _ uuid.UUID) (*domainFile.TypstFile, error) {
 	if m.getErr != nil {
 		return nil, m.getErr
 	}
 	return m.file, nil
 }
 
-func (m *mockFileManager) SaveTypstFile(_ context.Context, f *domainFile.TypstFile) error {
+func (m *mockTypstService) Save(_ context.Context, f *domainFile.TypstFile) error {
 	if m.saveErr != nil {
 		return m.saveErr
 	}
 	m.savedFile = f
 	return nil
+}
+
+type mockFileManager struct {
+	listErr    error
+	renameErr  error
+	deleteErr  error
+	files      []domainFile.File
+	renamedIDs []uuid.UUID
+	deletedIDs []uuid.UUID
 }
 
 func (m *mockFileManager) ListFilesByProject(_ context.Context, _ uuid.UUID) ([]domainFile.File, error) {
@@ -100,8 +103,9 @@ func TestService_ApplyFileChanges_Success(t *testing.T) {
 		newState: []byte("new-state"),
 		blocks:   []block.Block{b},
 	}
-	fileMgr := &mockFileManager{file: tf}
-	svc := NewService(fileMgr, merger, &mockDeltaCalculator{})
+	typstSvc := &mockTypstService{file: tf}
+	fileMgr := &mockFileManager{}
+	svc := NewService(fileMgr, typstSvc, merger, &mockDeltaCalculator{})
 
 	updated, err := svc.ApplyFileChanges(context.Background(), ApplyFileChangesRequest{
 		FileID: fileID,
@@ -114,7 +118,7 @@ func TestService_ApplyFileChanges_Success(t *testing.T) {
 	if string(updated.State()) != "new-state" {
 		t.Errorf("expected state 'new-state', got %s", updated.State())
 	}
-	if fileMgr.savedFile != tf {
+	if typstSvc.savedFile != tf {
 		t.Errorf("expected saved file to match tf")
 	}
 }
@@ -133,7 +137,7 @@ func TestService_ApplyMetadataMutations(t *testing.T) {
 	deletedEntry, _ := domainEntry.NewEntry(deleteID, "delete.typ", domainFile.TypeTypst, true, time.Now())
 	meta, _ := domainMeta.NewMetadata(projectID, []*domainEntry.Entry{renamedEntry, deletedEntry})
 
-	svc := NewService(fileMgr, &mockFileMerger{}, &mockDeltaCalculator{})
+	svc := NewService(fileMgr, &mockTypstService{}, &mockFileMerger{}, &mockDeltaCalculator{})
 
 	err := svc.ApplyMetadataMutations(context.Background(), []domainFile.File{renameFile, deleteFile}, meta)
 	if err != nil {
@@ -167,7 +171,7 @@ func TestService_GenerateContentInstructions(t *testing.T) {
 		},
 	}
 
-	svc := NewService(&mockFileManager{}, &mockFileMerger{}, deltaCalc)
+	svc := NewService(&mockFileManager{}, &mockTypstService{}, &mockFileMerger{}, deltaCalc)
 
 	instructions, err := svc.GenerateContentInstructions(serverFiles, meta, map[uuid.UUID][]byte{
 		fileID: []byte("client-vector"),
@@ -190,7 +194,7 @@ func TestService_GenerateContentInstructions(t *testing.T) {
 func TestService_ListFilesByProject_Error(t *testing.T) {
 	t.Parallel()
 	fileMgr := &mockFileManager{listErr: errors.New("failed to list")}
-	svc := NewService(fileMgr, &mockFileMerger{}, &mockDeltaCalculator{})
+	svc := NewService(fileMgr, &mockTypstService{}, &mockFileMerger{}, &mockDeltaCalculator{})
 
 	_, err := svc.ListFilesByProject(context.Background(), uuid.New())
 	if err == nil {
@@ -200,8 +204,8 @@ func TestService_ListFilesByProject_Error(t *testing.T) {
 
 func TestService_ApplyFileChanges_Error(t *testing.T) {
 	t.Parallel()
-	fileMgr := &mockFileManager{getErr: errors.New("failed to get")}
-	svc := NewService(fileMgr, &mockFileMerger{}, &mockDeltaCalculator{})
+	typstSvc := &mockTypstService{getErr: errors.New("failed to get")}
+	svc := NewService(&mockFileManager{}, typstSvc, &mockFileMerger{}, &mockDeltaCalculator{})
 
 	_, err := svc.ApplyFileChanges(context.Background(), ApplyFileChangesRequest{
 		FileID: uuid.New(),

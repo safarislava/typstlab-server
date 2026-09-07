@@ -12,6 +12,8 @@ import (
 	appAuth "github.com/safarislava/typstlab-server/internal/application/auth"
 	entryApp "github.com/safarislava/typstlab-server/internal/application/entry"
 	fileApp "github.com/safarislava/typstlab-server/internal/application/file"
+	binaryFile "github.com/safarislava/typstlab-server/internal/application/file/binary"
+	typstFile "github.com/safarislava/typstlab-server/internal/application/file/typst"
 	metadataApp "github.com/safarislava/typstlab-server/internal/application/metadata"
 	projectApp "github.com/safarislava/typstlab-server/internal/application/project"
 	sessionApp "github.com/safarislava/typstlab-server/internal/application/session"
@@ -67,6 +69,12 @@ type Container struct {
 
 	projectService     *projectApp.Service
 	projectServiceOnce sync.Once
+
+	typstFileService     *typstFile.Service
+	typstFileServiceOnce sync.Once
+
+	binaryFileService     *binaryFile.Service
+	binaryFileServiceOnce sync.Once
 
 	fileService     *fileApp.Service
 	fileServiceOnce sync.Once
@@ -203,10 +211,26 @@ func (c *Container) ProjectService() *projectApp.Service {
 	return c.projectService
 }
 
+// TypstFileService lazily initializes and returns the typst file application service.
+func (c *Container) TypstFileService() *typstFile.Service {
+	c.typstFileServiceOnce.Do(func() {
+		c.typstFileService = typstFile.NewService(c.FileRepo())
+	})
+	return c.typstFileService
+}
+
+// BinaryFileService lazily initializes and returns the binary file application service.
+func (c *Container) BinaryFileService() *binaryFile.Service {
+	c.binaryFileServiceOnce.Do(func() {
+		c.binaryFileService = binaryFile.NewService(c.FileRepo())
+	})
+	return c.binaryFileService
+}
+
 // FileService lazily initializes and returns the file application service.
 func (c *Container) FileService() *fileApp.Service {
 	c.fileServiceOnce.Do(func() {
-		c.fileService = fileApp.NewService(c.FileRepo())
+		c.fileService = fileApp.NewService(c.FileRepo(), c.TypstFileService(), c.BinaryFileService())
 	})
 	return c.fileService
 }
@@ -230,7 +254,12 @@ func (c *Container) SyncMetadataService() *syncMetadata.Service {
 // SyncFileService lazily initializes and returns the file sync service.
 func (c *Container) SyncFileService() *syncFile.Service {
 	c.syncFileServiceOnce.Do(func() {
-		c.syncFileService = syncFile.NewService(c.FileService(), c.YjsMerger(), c.YjsMerger())
+		c.syncFileService = syncFile.NewService(
+			c.FileService(),
+			c.TypstFileService(),
+			c.YjsMerger(),
+			c.YjsMerger(),
+		)
 	})
 	return c.syncFileService
 }
@@ -286,7 +315,12 @@ func (c *Container) ProjectHandler() *projectHttp.Handler {
 // FileHandler lazily initializes and returns the file HTTP handler.
 func (c *Container) FileHandler() *fileHttp.Handler {
 	c.fileHandlerOnce.Do(func() {
-		c.fileHandler = fileHttp.NewHandler(c.FileService(), c.SyncService())
+		c.fileHandler = fileHttp.NewHandler(
+			c.TypstFileService(),
+			c.BinaryFileService(),
+			c.FileService(),
+			c.SyncService(),
+		)
 	})
 	return c.fileHandler
 }
@@ -326,7 +360,11 @@ func (c *Container) AuthMiddleware() *middlewareHttp.AuthMiddleware {
 // AccessMiddleware lazily initializes and returns the access middleware.
 func (c *Container) AccessMiddleware() *middlewareHttp.AccessMiddleware {
 	c.accessMiddlewareOnce.Do(func() {
-		c.accessMiddleware = middlewareHttp.NewAccessMiddleware(c.ProjectService(), c.FileService())
+		c.accessMiddleware = middlewareHttp.NewAccessMiddleware(
+			c.ProjectService(),
+			c.TypstFileService(),
+			c.BinaryFileService(),
+		)
 	})
 	return c.accessMiddleware
 }

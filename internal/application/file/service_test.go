@@ -1,7 +1,6 @@
 package file
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"testing"
@@ -9,13 +8,13 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/safarislava/typstlab-server/internal/application/file/binary"
+	"github.com/safarislava/typstlab-server/internal/application/file/typst"
 	domainFile "github.com/safarislava/typstlab-server/internal/domain/file"
 )
 
 const (
-	testFileNameTypst  = "test.typ"
-	testFileNameBinary = "image.png"
-	testNameSuccess    = "success"
+	testNameSuccess = "success"
 )
 
 type mockRepository struct {
@@ -98,190 +97,10 @@ func (r *mockRepository) DeleteFile(_ context.Context, id uuid.UUID) error {
 	return nil
 }
 
-func (r *mockRepository) IsDeleted(_ context.Context, _ uuid.UUID) (bool, error) {
-	return false, nil
-}
-
 func setupTest(repo *mockRepository) (*Service, context.Context) {
-	return NewService(repo), context.Background()
-}
-
-func TestService_UploadTypstFile_Success(t *testing.T) {
-	t.Parallel()
-	projectID := uuid.New()
-	fileID := uuid.New()
-	repo := newMockRepository()
-	service, ctx := setupTest(repo)
-
-	req := &UploadTypstFileRequest{
-		ID:        fileID,
-		ProjectID: projectID,
-		Name:      testFileNameTypst,
-	}
-	f, err := service.UploadTypstFile(ctx, req)
-	if err != nil {
-		t.Fatalf("UploadTypstFile() unexpected error: %v", err)
-	}
-	if f.ID() != fileID || f.Name() != testFileNameTypst || f.ProjectID() != projectID {
-		t.Errorf("incorrect file fields: %+v", f)
-	}
-	if len(f.State()) != 0 {
-		t.Errorf("expected empty state, got %s", f.State())
-	}
-}
-
-func TestService_UploadTypstFile_ValidationError(t *testing.T) {
-	t.Parallel()
-	projectID := uuid.New()
-	repo := newMockRepository()
-	service, ctx := setupTest(repo)
-
-	req := &UploadTypstFileRequest{
-		ID:        uuid.Nil,
-		ProjectID: projectID,
-		Name:      testFileNameTypst,
-	}
-	_, err := service.UploadTypstFile(ctx, req)
-	if err == nil {
-		t.Error("expected validation error, got nil")
-	}
-}
-
-func TestService_UploadTypstFile_SaveErr(t *testing.T) {
-	t.Parallel()
-	projectID := uuid.New()
-	fileID := uuid.New()
-	repo := newMockRepository()
-	repo.saveErr = errors.New("save failed")
-	service, ctx := setupTest(repo)
-
-	req := &UploadTypstFileRequest{
-		ID:        fileID,
-		ProjectID: projectID,
-		Name:      testFileNameTypst,
-	}
-	_, err := service.UploadTypstFile(ctx, req)
-	if err == nil {
-		t.Error("expected save error, got nil")
-	}
-}
-
-func TestService_UploadBinaryFile_Success(t *testing.T) {
-	t.Parallel()
-	projectID := uuid.New()
-	fileID := uuid.New()
-	repo := newMockRepository()
-	service, ctx := setupTest(repo)
-
-	req := &UploadBinaryFileRequest{
-		ID:        fileID,
-		ProjectID: projectID,
-		Name:      testFileNameBinary,
-		Content:   []byte{1, 2},
-	}
-	f, err := service.UploadBinaryFile(ctx, req)
-	if err != nil {
-		t.Fatalf("UploadBinaryFile() unexpected error: %v", err)
-	}
-	if f.ID() != fileID || f.Name() != testFileNameBinary || f.ProjectID() != projectID {
-		t.Errorf("incorrect file: %+v", f)
-	}
-	if !bytes.Equal(f.Content(), []byte{1, 2}) {
-		t.Errorf("expected content %v, got %v", []byte{1, 2}, f.Content())
-	}
-}
-
-func TestService_UploadBinaryFile_ValidationError(t *testing.T) {
-	t.Parallel()
-	projectID := uuid.New()
-	repo := newMockRepository()
-	service, ctx := setupTest(repo)
-
-	req := &UploadBinaryFileRequest{
-		ID:        uuid.Nil,
-		ProjectID: projectID,
-		Name:      testFileNameBinary,
-	}
-	_, err := service.UploadBinaryFile(ctx, req)
-	if err == nil {
-		t.Error("expected validation error, got nil")
-	}
-}
-
-func TestService_UploadBinaryFile_SaveErr(t *testing.T) {
-	t.Parallel()
-	projectID := uuid.New()
-	fileID := uuid.New()
-	repo := newMockRepository()
-	repo.saveErr = errors.New("save failed")
-	service, ctx := setupTest(repo)
-
-	req := &UploadBinaryFileRequest{
-		ID:        fileID,
-		ProjectID: projectID,
-		Name:      testFileNameBinary,
-		Content:   []byte{1, 2},
-	}
-	_, err := service.UploadBinaryFile(ctx, req)
-	if err == nil {
-		t.Error("expected save error, got nil")
-	}
-}
-
-func TestService_GetTypstFile(t *testing.T) {
-	t.Parallel()
-	repo := newMockRepository()
-	service, ctx := setupTest(repo)
-
-	fileID := uuid.New()
-	tf, err := domainFile.NewTypstFile(fileID, uuid.New(), "doc.typ", []byte("state"), nil, time.Now())
-	if err != nil {
-		t.Fatalf("failed to create typst file: %v", err)
-	}
-	if saveErr := repo.SaveTypstFile(ctx, tf); saveErr != nil {
-		t.Fatalf("failed to save typst file: %v", saveErr)
-	}
-
-	f, err := service.GetTypstFile(ctx, fileID)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if f.ID() != fileID {
-		t.Errorf("expected file id %v, got %v", fileID, f.ID())
-	}
-
-	_, err = service.GetTypstFile(ctx, uuid.New())
-	if err == nil {
-		t.Error("expected error for non-existent file, got nil")
-	}
-}
-
-func TestService_GetBinaryFile(t *testing.T) {
-	t.Parallel()
-	repo := newMockRepository()
-	service, ctx := setupTest(repo)
-
-	fileID := uuid.New()
-	bf, err := domainFile.NewBinaryFile(fileID, uuid.New(), "img.png", []byte{1}, time.Now())
-	if err != nil {
-		t.Fatalf("failed to create binary file: %v", err)
-	}
-	if saveErr := repo.SaveBinaryFile(ctx, bf); saveErr != nil {
-		t.Fatalf("failed to save binary file: %v", saveErr)
-	}
-
-	f, err := service.GetBinaryFile(ctx, fileID)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if f.ID() != fileID {
-		t.Errorf("expected file id %v, got %v", fileID, f.ID())
-	}
-
-	_, err = service.GetBinaryFile(ctx, uuid.New())
-	if err == nil {
-		t.Error("expected error for non-existent file, got nil")
-	}
+	typstSvc := typst.NewService(repo)
+	binarySvc := binary.NewService(repo)
+	return NewService(repo, typstSvc, binarySvc), context.Background()
 }
 
 func TestService_RenameFile(t *testing.T) {
@@ -376,5 +195,11 @@ func TestService_ListFilesByProject(t *testing.T) {
 
 	if len(files) != 2 {
 		t.Errorf("Expected 2 files, got %d", len(files))
+	}
+
+	repo.findErr = errors.New("find failed")
+	_, err = service.ListFilesByProject(ctx, projectID)
+	if err == nil {
+		t.Error("expected find error, got nil")
 	}
 }

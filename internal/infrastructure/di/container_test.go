@@ -61,6 +61,8 @@ func TestContainer_InitialStateIsNil(t *testing.T) {
 	assertNil(t, "yjsMerger", c.yjsMerger)
 
 	assertNil(t, "projectService", c.projectService)
+	assertNil(t, "typstFileService", c.typstFileService)
+	assertNil(t, "binaryFileService", c.binaryFileService)
 	assertNil(t, "fileService", c.fileService)
 	assertNil(t, "syncService", c.syncService)
 	assertNil(t, "userService", c.userService)
@@ -116,6 +118,8 @@ func TestContainer_Services(t *testing.T) {
 	c := New(newTestConfig())
 
 	assertSingleton(t, "ProjectService", c.ProjectService(), c.ProjectService())
+	assertSingleton(t, "TypstFileService", c.TypstFileService(), c.TypstFileService())
+	assertSingleton(t, "BinaryFileService", c.BinaryFileService(), c.BinaryFileService())
 	assertSingleton(t, "FileService", c.FileService(), c.FileService())
 	assertSingleton(t, "EntryService", c.EntryService(), c.EntryService())
 	assertSingleton(t, "MetadataService", c.MetadataService(), c.MetadataService())

@@ -55,19 +55,3 @@ func TestService_GetMetadata_Error(t *testing.T) {
 		t.Error("expected error, got nil")
 	}
 }
-
-func TestService_CreateMetadata(t *testing.T) {
-	t.Parallel()
-	projectID := uuid.New()
-	entry, _ := domainEntry.NewEntry(uuid.New(), "doc.typ", domainFile.TypeTypst, false, time.Now())
-
-	svc := NewService(&mockRepository{})
-	meta, err := svc.CreateMetadata(projectID, []*domainEntry.Entry{entry})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	if meta.ProjectID() != projectID {
-		t.Errorf("expected project ID %s, got %s", projectID, meta.ProjectID())
-	}
-}
