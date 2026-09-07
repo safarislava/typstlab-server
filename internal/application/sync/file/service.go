@@ -31,7 +31,7 @@ type ApplyFileChangesRequest struct {
 	Delta  []byte
 }
 
-type Manager interface {
+type Repository interface {
 	GetTypstFile(ctx context.Context, fileID uuid.UUID) (*domainFile.TypstFile, error)
 	SaveTypstFile(ctx context.Context, f *domainFile.TypstFile) error
 	ListFilesByProject(ctx context.Context, projectID uuid.UUID) ([]domainFile.File, error)
@@ -48,25 +48,25 @@ type DeltaCalculator interface {
 }
 
 type Service struct {
-	fileManager     Manager
+	repository      Repository
 	fileMerger      Merger
 	deltaCalculator DeltaCalculator
 }
 
 func NewService(
-	fileManager Manager,
+	repository Repository,
 	fileMerger Merger,
 	deltaCalculator DeltaCalculator,
 ) *Service {
 	return &Service{
-		fileManager:     fileManager,
+		repository:      repository,
 		fileMerger:      fileMerger,
 		deltaCalculator: deltaCalculator,
 	}
 }
 
 func (s *Service) ListFilesByProject(ctx context.Context, projectID uuid.UUID) ([]domainFile.File, error) {
-	files, err := s.fileManager.ListFilesByProject(ctx, projectID)
+	files, err := s.repository.ListFilesByProject(ctx, projectID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list project files: %w", err)
 	}
@@ -74,7 +74,7 @@ func (s *Service) ListFilesByProject(ctx context.Context, projectID uuid.UUID) (
 }
 
 func (s *Service) ApplyFileChanges(ctx context.Context, req ApplyFileChangesRequest) (*domainFile.TypstFile, error) {
-	f, err := s.fileManager.GetTypstFile(ctx, req.FileID)
+	f, err := s.repository.GetTypstFile(ctx, req.FileID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find typst file: %w", err)
 	}
@@ -88,7 +88,7 @@ func (s *Service) ApplyFileChanges(ctx context.Context, req ApplyFileChangesRequ
 		return nil, fmt.Errorf("failed to update typst file aggregate state: %w", err)
 	}
 
-	if err := s.fileManager.SaveTypstFile(ctx, f); err != nil {
+	if err := s.repository.SaveTypstFile(ctx, f); err != nil {
 		return nil, fmt.Errorf("failed to save updated typst file: %w", err)
 	}
 
@@ -125,14 +125,14 @@ func (s *Service) applySingleEntryMutation(
 	entry *domainEntry.Entry,
 ) error {
 	if entry.IsDeleted() {
-		if err := s.fileManager.DeleteFile(ctx, entry.ID()); err != nil {
+		if err := s.repository.DeleteFile(ctx, entry.ID()); err != nil {
 			return fmt.Errorf("failed to delete file %s: %w", entry.ID(), err)
 		}
 		return nil
 	}
 
 	if entry.Name() != sf.Name() {
-		if err := s.fileManager.RenameFile(ctx, entry.ID(), entry.Name()); err != nil {
+		if err := s.repository.RenameFile(ctx, entry.ID(), entry.Name()); err != nil {
 			return fmt.Errorf("failed to rename file %s: %w", entry.ID(), err)
 		}
 	}

@@ -9,7 +9,7 @@ import (
 	domainMeta "github.com/safarislava/typstlab-server/internal/domain/metadata"
 )
 
-type Manager interface {
+type Repository interface {
 	GetMetadata(ctx context.Context, projectID uuid.UUID) (*domainMeta.Metadata, error)
 }
 
@@ -23,14 +23,14 @@ type Syncer interface {
 }
 
 type Service struct {
-	metaManager Manager
-	syncer      Syncer
+	repository Repository
+	syncer     Syncer
 }
 
-func NewService(metaManager Manager, syncer Syncer) *Service {
+func NewService(repository Repository, syncer Syncer) *Service {
 	return &Service{
-		metaManager: metaManager,
-		syncer:      syncer,
+		repository: repository,
+		syncer:     syncer,
 	}
 }
 
@@ -41,7 +41,7 @@ func (s *Service) SyncMetadata(
 	clientDelta []byte,
 	clientStateVector []byte,
 ) (metadataDelta []byte, updatedMeta *domainMeta.Metadata, err error) {
-	currentMeta, err := s.metaManager.GetMetadata(ctx, projectID)
+	currentMeta, err := s.repository.GetMetadata(ctx, projectID)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to fetch current project metadata: %w", err)
 	}
