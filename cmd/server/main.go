@@ -42,6 +42,14 @@ func run() error {
 	}
 
 	container := di.New(cfg)
+	defer container.Close()
+
+	if s3Storage := container.S3Storage(); s3Storage != nil {
+		if err := s3Storage.EnsureBucket(ctx); err != nil {
+			slog.Warn("Failed to ensure S3 bucket exists", slog.Any("error", err))
+		}
+	}
+
 	server := &http.Server{
 		Addr:              ":" + cfg.Port,
 		Handler:           container.Router(),

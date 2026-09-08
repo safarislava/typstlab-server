@@ -19,6 +19,7 @@ const (
 	testJWTSecret   = "test-secret"
 	testOrigin      = "http://localhost:3000"
 	testAuthJSON    = `{"email":"di_user@example.com","password":"password123"}`
+	mockAuth        = "test"
 )
 
 func newTestConfig() *config.Config {
@@ -27,6 +28,12 @@ func newTestConfig() *config.Config {
 		DatabaseURL:    testDatabaseURL,
 		JWTSecret:      testJWTSecret,
 		AllowedOrigins: []string{testOrigin},
+		S3: config.S3Config{
+			Endpoint:  "localhost:9000",
+			Bucket:    "test-bucket",
+			AccessKey: mockAuth,
+			SecretKey: mockAuth,
+		},
 	}
 }
 
@@ -49,7 +56,7 @@ func assertNil[T comparable](t *testing.T, name string, val T) {
 func TestContainer_InitialStateIsNil(t *testing.T) {
 	t.Parallel()
 
-	c := New(newTestConfig())
+	c := New(newTestConfig(), WithMemoryRepositories())
 
 	assertNil(t, "projectRepo", c.projectRepo)
 	assertNil(t, "fileRepo", c.fileRepo)
@@ -80,21 +87,35 @@ func TestContainer_InitialStateIsNil(t *testing.T) {
 	assertNil(t, "router", c.router)
 }
 
-func TestContainer_Config(t *testing.T) {
+func TestContainer_ConfigAndLifecycle(t *testing.T) {
 	t.Parallel()
 
 	cfg := newTestConfig()
-	c := New(cfg)
+	c := New(cfg, WithMemoryRepositories())
 
 	if c.Config() != cfg {
 		t.Errorf("Expected config %v, got %v", cfg, c.Config())
+	}
+
+	// Close on container with nil pool should not panic
+	c.Close()
+}
+
+func TestContainer_Options(t *testing.T) {
+	t.Parallel()
+
+	cfg := newTestConfig()
+	c := New(cfg, WithPool(nil), WithS3Storage(nil), WithMemoryRepositories())
+
+	if !c.useMemory {
+		t.Error("Expected useMemory to be true")
 	}
 }
 
 func TestContainer_Repositories(t *testing.T) {
 	t.Parallel()
 
-	c := New(newTestConfig())
+	c := New(newTestConfig(), WithMemoryRepositories())
 
 	assertSingleton(t, "ProjectRepo", c.ProjectRepo(), c.ProjectRepo())
 	assertSingleton(t, "FileRepo", c.FileRepo(), c.FileRepo())
@@ -105,7 +126,7 @@ func TestContainer_Repositories(t *testing.T) {
 func TestContainer_Infrastructure(t *testing.T) {
 	t.Parallel()
 
-	c := New(newTestConfig())
+	c := New(newTestConfig(), WithMemoryRepositories())
 
 	assertSingleton(t, "Hasher", c.Hasher(), c.Hasher())
 	assertSingleton(t, "TokenService", c.TokenService(), c.TokenService())
@@ -115,7 +136,7 @@ func TestContainer_Infrastructure(t *testing.T) {
 func TestContainer_Services(t *testing.T) {
 	t.Parallel()
 
-	c := New(newTestConfig())
+	c := New(newTestConfig(), WithMemoryRepositories())
 
 	assertSingleton(t, "ProjectService", c.ProjectService(), c.ProjectService())
 	assertSingleton(t, "TypstFileService", c.TypstFileService(), c.TypstFileService())
@@ -134,7 +155,7 @@ func TestContainer_Services(t *testing.T) {
 func TestContainer_HandlersAndMiddlewares(t *testing.T) {
 	t.Parallel()
 
-	c := New(newTestConfig())
+	c := New(newTestConfig(), WithMemoryRepositories())
 
 	assertSingleton(t, "ProjectHandler", c.ProjectHandler(), c.ProjectHandler())
 	assertSingleton(t, "FileHandler", c.FileHandler(), c.FileHandler())
@@ -148,7 +169,7 @@ func TestContainer_HandlersAndMiddlewares(t *testing.T) {
 func TestContainer_Router(t *testing.T) {
 	t.Parallel()
 
-	c := New(newTestConfig())
+	c := New(newTestConfig(), WithMemoryRepositories())
 
 	assertSingleton(t, "Router", c.Router(), c.Router())
 }
@@ -156,7 +177,7 @@ func TestContainer_Router(t *testing.T) {
 func TestContainer_RouterServesRequests(t *testing.T) {
 	t.Parallel()
 
-	c := New(newTestConfig())
+	c := New(newTestConfig(), WithMemoryRepositories())
 	router := c.Router()
 
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "/health", http.NoBody)
@@ -179,7 +200,7 @@ func TestContainer_RouterServesRequests(t *testing.T) {
 func TestContainer_RouterAuthAndProjectFlow(t *testing.T) {
 	t.Parallel()
 
-	c := New(newTestConfig())
+	c := New(newTestConfig(), WithMemoryRepositories())
 	router := c.Router()
 
 	// Register
