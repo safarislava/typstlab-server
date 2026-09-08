@@ -5,6 +5,8 @@ import (
 	"testing"
 )
 
+const testValidDatabaseURL = "postgres://user:pass@localhost:5432/testdb?sslmode=disable"
+
 func TestNewPool_InvalidURL(t *testing.T) {
 	t.Parallel()
 
@@ -24,9 +26,8 @@ func TestNewPool_ValidURL(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	validURL := "postgres://user:pass@localhost:5432/testdb?sslmode=disable"
 
-	pool, err := NewPool(ctx, validURL)
+	pool, err := NewPool(ctx, testValidDatabaseURL)
 	if err != nil {
 		t.Fatalf("unexpected error creating pool with valid URL: %v", err)
 	}
