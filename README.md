@@ -43,9 +43,10 @@ The backend is designed to be lightweight, high-performance, and secure, focusin
 
 ## 🗺 Roadmap
 
-- [ ] **Phase 1: Persistence & Storage Layer**
-  - [ ] **PostgreSQL**: Replace in-memory repository with PostgreSQL (`pgx` / `sqlx`) for users, projects, ACL, and file metadata.
-  - [ ] **S3 / MinIO Storage**: Integrate S3-compatible object storage for binary assets (images, fonts, PDFs).
+- [x] **Phase 1: Persistence & Storage Layer**
+  - [x] **PostgreSQL**: PostgreSQL (`pgx/v5`) persistence for users, projects, project members (ACL), and TLD document state.
+  - [x] **S3 / MinIO Storage**: S3-compatible object storage client with composite persistence layer for binary files.
+  - [x] **TLD Document Format**: Blockless, pure Yjs binary CRDT document representation.
 
 - [ ] **Phase 2: Real-time Collaboration (WebSockets)**
   - [ ] **WebSocket Gateway**: Implement persistent WebSocket endpoints (`/ws/projects/{projectID}`) for real-time Yjs CRDT delta broadcasting.

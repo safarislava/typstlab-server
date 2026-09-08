@@ -16,7 +16,6 @@ import (
 	syncApp "github.com/safarislava/typstlab-server/internal/application/sync"
 	domainFile "github.com/safarislava/typstlab-server/internal/domain/file"
 	"github.com/safarislava/typstlab-server/internal/infrastructure/http/middleware"
-	"github.com/safarislava/typstlab-server/internal/infrastructure/serialization"
 )
 
 type TypstService interface {
@@ -165,15 +164,8 @@ type jsonApplyFileChangesRequest struct {
 	Delta []byte `json:"delta"`
 }
 
-func (h *Handler) initTypstFile(content []byte) (state []byte, err error) {
-	if len(content) == 0 {
-		return nil, nil
-	}
-	state, err = serialization.DeserializeTypstFile(content)
-	if err != nil {
-		return nil, fmt.Errorf("failed to deserialize typst file: %w", err)
-	}
-	return state, nil
+func isTypstFile(name string) bool {
+	return strings.HasSuffix(name, ".tld") || strings.HasSuffix(name, ".typ") || strings.HasSuffix(name, ".typxml")
 }
 
 func (h *Handler) UploadFile(w http.ResponseWriter, r *http.Request) {
@@ -198,19 +190,12 @@ func (h *Handler) UploadFile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var f domainFile.File
-	if strings.HasSuffix(name, ".typxml") {
-		state, errInit := h.initTypstFile(content)
-		if errInit != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			_, _ = w.Write([]byte(errInit.Error()))
-			return
-		}
-
+	if isTypstFile(name) {
 		req := typstApp.UploadRequest{
 			ID:        id,
 			ProjectID: p.ID(),
 			Name:      name,
-			State:     state,
+			State:     content,
 		}
 		f, err = h.typstService.Upload(r.Context(), &req)
 	} else {

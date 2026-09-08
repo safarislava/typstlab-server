@@ -138,7 +138,7 @@ func TestFileHandler_UploadTypstFile(t *testing.T) {
 	assertFileCreation(t, rr, fileID)
 }
 
-func TestFileHandler_UploadTypstFile_WithXML(t *testing.T) {
+func TestFileHandler_UploadTypstFile_WithContent(t *testing.T) {
 	t.Parallel()
 
 	userID := uuid.New()
@@ -147,8 +147,6 @@ func TestFileHandler_UploadTypstFile_WithXML(t *testing.T) {
 
 	fileID := uuid.New()
 	tf, _ := domainFile.NewTypstFile(fileID, projectID, docTyp, []byte("state-bytes"), time.Now())
-
-	xmlData := `<file state="c3RhdGUtYnl0ZXM="></file>`
 
 	mockTypst := &mockTypstService{
 		uploadFunc: func(ctx context.Context, req *typstApp.UploadRequest) (*domainFile.TypstFile, error) {
@@ -167,7 +165,7 @@ func TestFileHandler_UploadTypstFile_WithXML(t *testing.T) {
 	reqBody, _ := json.Marshal(jsonUploadFileRequest{
 		ID:      fileID.String(),
 		Name:    docTyp,
-		Content: []byte(xmlData),
+		Content: []byte("state-bytes"),
 	})
 	req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/projects/"+projectID.String()+"/files", bytes.NewBuffer(reqBody))
 	rr := httptest.NewRecorder()
@@ -676,19 +674,5 @@ func TestFileHandler_UploadFile_ServiceErrors(t *testing.T) {
 	handler.UploadFile(rr2, req2)
 	if rr2.Code != http.StatusInternalServerError {
 		t.Errorf("Expected status 500, got %d", rr2.Code)
-	}
-
-	// Case 3: Invalid typxml XML payload
-	reqBodyInvalidXML, _ := json.Marshal(jsonUploadFileRequest{
-		ID:      uuid.New().String(),
-		Name:    testTypxml,
-		Content: []byte("<invalid-xml>"),
-	})
-	req3 := httptest.NewRequestWithContext(testContext(userID, p, nil), http.MethodPost, "/projects/"+projectID.String()+"/files", bytes.NewBuffer(reqBodyInvalidXML))
-	req3.Header.Set("Content-Type", "application/json")
-	rr3 := httptest.NewRecorder()
-	handler.UploadFile(rr3, req3)
-	if rr3.Code != http.StatusInternalServerError {
-		t.Errorf("Expected status 500, got %d", rr3.Code)
 	}
 }
