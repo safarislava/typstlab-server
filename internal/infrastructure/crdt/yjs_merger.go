@@ -93,11 +93,19 @@ func populateMetadataDoc(doc *crdt.Doc, currentMeta *domainMeta.Metadata) {
 		return
 	}
 
+	filesMap := doc.GetMap(keyFiles)
+	existingKeys := make(map[string]bool)
+	if filesMap != nil {
+		for _, k := range filesMap.Keys() {
+			existingKeys[k] = true
+		}
+	}
+
 	doc.Transact(func(txn *crdt.Transaction) {
 		m := txn.GetMap(keyFiles)
 		for _, entry := range currentMeta.Entries() {
 			idStr := entry.ID().String()
-			if _, exists := m.Get(idStr); exists {
+			if existingKeys[idStr] {
 				continue
 			}
 			m.Set(txn, idStr, map[string]any{
