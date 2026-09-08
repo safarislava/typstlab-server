@@ -30,6 +30,11 @@ const (
 		FROM files
 		WHERE id = $1 AND type = $2
 	`
+	deleteFileQuery = `
+		DELETE FROM files
+		WHERE id = $1
+		RETURNING project_id, name, type
+	`
 )
 
 type FileRepository struct {
@@ -201,14 +206,20 @@ func mapFileRow(id, pID uuid.UUID, name, typeStr string, state []byte, updatedAt
 
 // DeleteFile deletes a file record from PostgreSQL.
 func (r *FileRepository) DeleteFile(ctx context.Context, id uuid.UUID) error {
-	query := `DELETE FROM files WHERE id = $1`
-	cmdTag, err := r.pool.Exec(ctx, query, id)
+	var (
+		projectID uuid.UUID
+		name      string
+		typeStr   string
+	)
+
+	err := r.pool.QueryRow(ctx, deleteFileQuery, id).Scan(&projectID, &name, &typeStr)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domainFile.ErrFileNotFound
+		}
 		return fmt.Errorf("failed to delete file: %w", err)
 	}
-	if cmdTag.RowsAffected() == 0 {
-		return domainFile.ErrFileNotFound
-	}
+
 	return nil
 }
 
