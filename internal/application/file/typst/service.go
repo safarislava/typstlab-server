@@ -7,7 +7,6 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/safarislava/typstlab-server/internal/domain/block"
 	domainFile "github.com/safarislava/typstlab-server/internal/domain/file"
 )
 
@@ -16,7 +15,6 @@ type UploadRequest struct {
 	ProjectID uuid.UUID
 	Name      string
 	State     []byte
-	Blocks    []block.Block
 }
 
 type Repository interface {
@@ -35,7 +33,7 @@ func NewService(repo Repository) *Service {
 }
 
 func (s *Service) Upload(ctx context.Context, req *UploadRequest) (*domainFile.TypstFile, error) {
-	f, err := domainFile.NewTypstFile(req.ID, req.ProjectID, req.Name, req.State, req.Blocks, time.Now())
+	f, err := domainFile.NewTypstFile(req.ID, req.ProjectID, req.Name, req.State, time.Now())
 	if err != nil {
 		return nil, fmt.Errorf("failed to upload typst file: %w", err)
 	}

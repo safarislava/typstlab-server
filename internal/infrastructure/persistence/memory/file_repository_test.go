@@ -7,13 +7,12 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/safarislava/typstlab-server/internal/domain/block"
 	domainFile "github.com/safarislava/typstlab-server/internal/domain/file"
 )
 
 func createAndSaveTestTypstFile(ctx context.Context, t *testing.T, repo *FileRepository, projectID, fileID uuid.UUID) *domainFile.TypstFile {
 	t.Helper()
-	tf, err := domainFile.NewTypstFile(fileID, projectID, "doc.typ", []byte("initial-state"), []block.Block(nil), time.Now())
+	tf, err := domainFile.NewTypstFile(fileID, projectID, "doc.typ", []byte("initial-state"), time.Now())
 	if err != nil {
 		t.Fatalf("failed to create typst file: %v", err)
 	}

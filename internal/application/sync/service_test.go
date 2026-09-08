@@ -137,7 +137,7 @@ func TestSyncService_Sync_ListFilesError(t *testing.T) {
 func TestSyncService_ApplyFileChanges(t *testing.T) {
 	t.Parallel()
 	fileID := uuid.New()
-	tf, _ := domainFile.NewTypstFile(fileID, uuid.New(), "doc.typ", nil, nil, time.Now())
+	tf, _ := domainFile.NewTypstFile(fileID, uuid.New(), "doc.typ", nil, time.Now())
 	fileSyncer := &mockFileSyncer{changedFile: tf}
 	svc := NewService(&mockMetadataSyncer{}, fileSyncer)
 

@@ -316,7 +316,7 @@ func TestAccessMiddleware_FileAccess_ProjectNotFound(t *testing.T) {
 
 	fileID := uuid.New()
 	projectID := uuid.New()
-	tf, _ := domainFile.NewTypstFile(fileID, projectID, docTypstName, nil, nil, time.Now())
+	tf, _ := domainFile.NewTypstFile(fileID, projectID, docTypstName, nil, time.Now())
 
 	typstSvc := &mockTypstUseCaseForAccess{
 		getByIDFunc: func(ctx context.Context, fid uuid.UUID) (*domainFile.TypstFile, error) {
@@ -360,7 +360,7 @@ func TestAccessMiddleware_FileAccess_Forbidden(t *testing.T) {
 	projectID := uuid.New()
 	fileID := uuid.New()
 
-	tf, _ := domainFile.NewTypstFile(fileID, projectID, docTypstName, nil, nil, time.Now())
+	tf, _ := domainFile.NewTypstFile(fileID, projectID, docTypstName, nil, time.Now())
 	p, _ := domainProject.NewProject(projectID, []uuid.UUID{otherUserID}, testProjectName, time.Now())
 
 	typstSvc := &mockTypstUseCaseForAccess{
@@ -407,7 +407,7 @@ func TestAccessMiddleware_FileAccess_Success_TypstFile(t *testing.T) {
 	projectID := uuid.New()
 	fileID := uuid.New()
 
-	tf, _ := domainFile.NewTypstFile(fileID, projectID, docTypstName, nil, nil, time.Now())
+	tf, _ := domainFile.NewTypstFile(fileID, projectID, docTypstName, nil, time.Now())
 	p, _ := domainProject.NewProject(projectID, []uuid.UUID{userID}, testProjectName, time.Now())
 
 	typstSvc := &mockTypstUseCaseForAccess{
@@ -583,7 +583,7 @@ func TestFileFromContext_ValidFileContext(t *testing.T) {
 	t.Parallel()
 
 	fileID := uuid.New()
-	expectedFile, _ := domainFile.NewTypstFile(fileID, uuid.New(), docTypstName, nil, nil, time.Now())
+	expectedFile, _ := domainFile.NewTypstFile(fileID, uuid.New(), docTypstName, nil, time.Now())
 	ctx := context.WithValue(context.Background(), fileContextKey, expectedFile)
 
 	f, ok := FileFromContext(ctx)
@@ -612,7 +612,7 @@ func TestWithFile(t *testing.T) {
 	t.Parallel()
 
 	fileID := uuid.New()
-	expectedFile, _ := domainFile.NewTypstFile(fileID, uuid.New(), docTypstName, nil, nil, time.Now())
+	expectedFile, _ := domainFile.NewTypstFile(fileID, uuid.New(), docTypstName, nil, time.Now())
 	ctx := WithFile(context.Background(), expectedFile)
 
 	f, ok := FileFromContext(ctx)

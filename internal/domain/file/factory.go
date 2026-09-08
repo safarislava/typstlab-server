@@ -4,8 +4,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-
-	"github.com/safarislava/typstlab-server/internal/domain/block"
 )
 
 func NewBinaryFile(id, projectID uuid.UUID, name string, content []byte, updatedAt time.Time) (*BinaryFile, error) {
@@ -27,7 +25,7 @@ func NewBinaryFile(id, projectID uuid.UUID, name string, content []byte, updated
 	}, nil
 }
 
-func NewTypstFile(id, projectID uuid.UUID, name string, state []byte, blocks []block.Block, updatedAt time.Time) (*TypstFile, error) {
+func NewTypstFile(id, projectID uuid.UUID, name string, state []byte, updatedAt time.Time) (*TypstFile, error) {
 	if id == uuid.Nil {
 		return nil, ErrEmptyFileID
 	}
@@ -42,7 +40,6 @@ func NewTypstFile(id, projectID uuid.UUID, name string, state []byte, blocks []b
 		projectID: projectID,
 		name:      name,
 		state:     append([]byte(nil), state...),
-		blocks:    append([]block.Block(nil), blocks...),
 		updatedAt: updatedAt,
 	}, nil
 }

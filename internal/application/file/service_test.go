@@ -112,7 +112,7 @@ func TestService_RenameFile(t *testing.T) {
 	repo := newMockRepository()
 	service, ctx := setupTest(repo)
 
-	tf, _ := domainFile.NewTypstFile(typstID, projectID, "old.typ", nil, nil, time.Now())
+	tf, _ := domainFile.NewTypstFile(typstID, projectID, "old.typ", nil, time.Now())
 	bf, _ := domainFile.NewBinaryFile(binaryID, projectID, "old.png", []byte{1}, time.Now())
 
 	_ = repo.SaveTypstFile(ctx, tf)
@@ -179,10 +179,10 @@ func TestService_ListFilesByProject(t *testing.T) {
 	repo := newMockRepository()
 	service, ctx := setupTest(repo)
 
-	tf, _ := domainFile.NewTypstFile(uuid.New(), projectID, "doc.typ", nil, nil, time.Now())
+	tf, _ := domainFile.NewTypstFile(uuid.New(), projectID, "doc.typ", nil, time.Now())
 	bf, _ := domainFile.NewBinaryFile(uuid.New(), projectID, "img.png", []byte{1, 2, 3}, time.Now())
 
-	otherTF, _ := domainFile.NewTypstFile(uuid.New(), uuid.New(), "other.typ", nil, nil, time.Now())
+	otherTF, _ := domainFile.NewTypstFile(uuid.New(), uuid.New(), "other.typ", nil, time.Now())
 
 	_ = repo.SaveTypstFile(ctx, tf)
 	_ = repo.SaveBinaryFile(ctx, bf)

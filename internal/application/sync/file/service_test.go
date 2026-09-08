@@ -8,7 +8,6 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/safarislava/typstlab-server/internal/domain/block"
 	domainEntry "github.com/safarislava/typstlab-server/internal/domain/entry"
 	domainFile "github.com/safarislava/typstlab-server/internal/domain/file"
 	domainMeta "github.com/safarislava/typstlab-server/internal/domain/metadata"
@@ -70,15 +69,14 @@ func (m *mockFileManager) DeleteFile(_ context.Context, fileID uuid.UUID) error 
 
 type mockFileMerger struct {
 	newState []byte
-	blocks   []block.Block
 	mergeErr error
 }
 
-func (m *mockFileMerger) MergeFile(_, _ []byte) ([]byte, []block.Block, error) {
+func (m *mockFileMerger) MergeFile(_, _ []byte) ([]byte, error) {
 	if m.mergeErr != nil {
-		return nil, nil, m.mergeErr
+		return nil, m.mergeErr
 	}
-	return m.newState, m.blocks, nil
+	return m.newState, nil
 }
 
 type mockDeltaCalculator struct {
@@ -96,12 +94,10 @@ func TestService_ApplyFileChanges_Success(t *testing.T) {
 	t.Parallel()
 	fileID := uuid.New()
 	projectID := uuid.New()
-	tf, _ := domainFile.NewTypstFile(fileID, projectID, "doc.typ", []byte("old-state"), nil, time.Now())
+	tf, _ := domainFile.NewTypstFile(fileID, projectID, "doc.typ", []byte("old-state"), time.Now())
 
-	b, _ := block.NewBlock(uuid.New(), "intro", "hello")
 	merger := &mockFileMerger{
 		newState: []byte("new-state"),
-		blocks:   []block.Block{b},
 	}
 	typstSvc := &mockTypstService{file: tf}
 	fileMgr := &mockFileManager{}
@@ -129,8 +125,8 @@ func TestService_ApplyMetadataMutations(t *testing.T) {
 	renameID := uuid.New()
 	deleteID := uuid.New()
 
-	renameFile, _ := domainFile.NewTypstFile(renameID, projectID, "old.typ", nil, nil, time.Now())
-	deleteFile, _ := domainFile.NewTypstFile(deleteID, projectID, "delete.typ", nil, nil, time.Now())
+	renameFile, _ := domainFile.NewTypstFile(renameID, projectID, "old.typ", nil, time.Now())
+	deleteFile, _ := domainFile.NewTypstFile(deleteID, projectID, "delete.typ", nil, time.Now())
 	fileMgr := &mockFileManager{files: []domainFile.File{renameFile, deleteFile}}
 
 	renamedEntry, _ := domainEntry.NewEntry(renameID, "new.typ", domainFile.TypeTypst, false, time.Now())
@@ -158,7 +154,7 @@ func TestService_GenerateContentInstructions(t *testing.T) {
 	fileID := uuid.New()
 	offlineFileID := uuid.New()
 
-	serverFile, _ := domainFile.NewTypstFile(fileID, projectID, "doc.typ", []byte("server-state"), nil, time.Now())
+	serverFile, _ := domainFile.NewTypstFile(fileID, projectID, "doc.typ", []byte("server-state"), time.Now())
 	serverFiles := []domainFile.File{serverFile}
 
 	serverEntry, _ := domainEntry.NewEntry(fileID, "doc.typ", domainFile.TypeTypst, false, time.Now())
