@@ -1,4 +1,4 @@
-package persistence
+package memory
 
 import (
 	"context"
@@ -10,25 +10,25 @@ import (
 	domainToken "github.com/safarislava/typstlab-server/internal/domain/token"
 )
 
-type MemorySessionRepository struct {
+type SessionRepository struct {
 	mu    sync.RWMutex
 	store map[string]session.Session
 }
 
-func NewMemorySessionRepository() *MemorySessionRepository {
-	return &MemorySessionRepository{
+func NewMemorySessionRepository() *SessionRepository {
+	return &SessionRepository{
 		store: make(map[string]session.Session),
 	}
 }
 
-func (r *MemorySessionRepository) Save(_ context.Context, s session.Session) error {
+func (r *SessionRepository) Save(_ context.Context, s session.Session) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.store[s.Token().Value()] = s
 	return nil
 }
 
-func (r *MemorySessionRepository) FindByToken(_ context.Context, t domainToken.Token) (session.Session, error) {
+func (r *SessionRepository) FindByToken(_ context.Context, t domainToken.Token) (session.Session, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	s, ok := r.store[t.Value()]
@@ -38,14 +38,14 @@ func (r *MemorySessionRepository) FindByToken(_ context.Context, t domainToken.T
 	return s, nil
 }
 
-func (r *MemorySessionRepository) Delete(_ context.Context, t domainToken.Token) error {
+func (r *SessionRepository) Delete(_ context.Context, t domainToken.Token) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	delete(r.store, t.Value())
 	return nil
 }
 
-func (r *MemorySessionRepository) DeleteByUserID(_ context.Context, userID uuid.UUID) error {
+func (r *SessionRepository) DeleteByUserID(_ context.Context, userID uuid.UUID) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for k, v := range r.store {

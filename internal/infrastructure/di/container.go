@@ -31,7 +31,7 @@ import (
 	projectHttp "github.com/safarislava/typstlab-server/internal/infrastructure/http/project"
 	syncHttp "github.com/safarislava/typstlab-server/internal/infrastructure/http/sync"
 	userHttp "github.com/safarislava/typstlab-server/internal/infrastructure/http/user"
-	"github.com/safarislava/typstlab-server/internal/infrastructure/persistence"
+	"github.com/safarislava/typstlab-server/internal/infrastructure/persistence/memory"
 )
 
 const headerContentType = "Content-Type"
@@ -41,16 +41,16 @@ type Container struct {
 	cfg *config.Config
 
 	// Repositories
-	projectRepo     *persistence.MemoryProjectRepository
+	projectRepo     *memory.ProjectRepository
 	projectRepoOnce sync.Once
 
-	fileRepo     *persistence.MemoryFileRepository
+	fileRepo     *memory.FileRepository
 	fileRepoOnce sync.Once
 
-	userRepo     *persistence.MemoryUserRepository
+	userRepo     *memory.UserRepository
 	userRepoOnce sync.Once
 
-	sessionRepo     *persistence.MemorySessionRepository
+	sessionRepo     *memory.SessionRepository
 	sessionRepoOnce sync.Once
 
 	// Infrastructure
@@ -140,33 +140,33 @@ func (c *Container) Config() *config.Config {
 }
 
 // ProjectRepo lazily initializes and returns the project repository.
-func (c *Container) ProjectRepo() *persistence.MemoryProjectRepository {
+func (c *Container) ProjectRepo() *memory.ProjectRepository {
 	c.projectRepoOnce.Do(func() {
-		c.projectRepo = persistence.NewMemoryProjectRepository()
+		c.projectRepo = memory.NewMemoryProjectRepository()
 	})
 	return c.projectRepo
 }
 
 // FileRepo lazily initializes and returns the file repository.
-func (c *Container) FileRepo() *persistence.MemoryFileRepository {
+func (c *Container) FileRepo() *memory.FileRepository {
 	c.fileRepoOnce.Do(func() {
-		c.fileRepo = persistence.NewMemoryFileRepository()
+		c.fileRepo = memory.NewMemoryFileRepository()
 	})
 	return c.fileRepo
 }
 
 // UserRepo lazily initializes and returns the user repository.
-func (c *Container) UserRepo() *persistence.MemoryUserRepository {
+func (c *Container) UserRepo() *memory.UserRepository {
 	c.userRepoOnce.Do(func() {
-		c.userRepo = persistence.NewMemoryUserRepository()
+		c.userRepo = memory.NewMemoryUserRepository()
 	})
 	return c.userRepo
 }
 
 // SessionRepo lazily initializes and returns the session repository.
-func (c *Container) SessionRepo() *persistence.MemorySessionRepository {
+func (c *Container) SessionRepo() *memory.SessionRepository {
 	c.sessionRepoOnce.Do(func() {
-		c.sessionRepo = persistence.NewMemorySessionRepository()
+		c.sessionRepo = memory.NewMemorySessionRepository()
 	})
 	return c.sessionRepo
 }

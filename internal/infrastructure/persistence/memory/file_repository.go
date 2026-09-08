@@ -1,4 +1,4 @@
-package persistence
+package memory
 
 import (
 	"context"
@@ -11,22 +11,22 @@ import (
 	domainFile "github.com/safarislava/typstlab-server/internal/domain/file"
 )
 
-type MemoryFileRepository struct {
+type FileRepository struct {
 	mu          sync.RWMutex
 	typstFiles  map[uuid.UUID]*domainFile.TypstFile
 	binaryFiles map[uuid.UUID]*domainFile.BinaryFile
 	tombstones  map[uuid.UUID]bool
 }
 
-func NewMemoryFileRepository() *MemoryFileRepository {
-	return &MemoryFileRepository{
+func NewMemoryFileRepository() *FileRepository {
+	return &FileRepository{
 		typstFiles:  make(map[uuid.UUID]*domainFile.TypstFile),
 		binaryFiles: make(map[uuid.UUID]*domainFile.BinaryFile),
 		tombstones:  make(map[uuid.UUID]bool),
 	}
 }
 
-func (r *MemoryFileRepository) SaveTypstFile(_ context.Context, f *domainFile.TypstFile) error {
+func (r *FileRepository) SaveTypstFile(_ context.Context, f *domainFile.TypstFile) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -34,7 +34,7 @@ func (r *MemoryFileRepository) SaveTypstFile(_ context.Context, f *domainFile.Ty
 	return nil
 }
 
-func (r *MemoryFileRepository) SaveBinaryFile(_ context.Context, f *domainFile.BinaryFile) error {
+func (r *FileRepository) SaveBinaryFile(_ context.Context, f *domainFile.BinaryFile) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -42,7 +42,7 @@ func (r *MemoryFileRepository) SaveBinaryFile(_ context.Context, f *domainFile.B
 	return nil
 }
 
-func (r *MemoryFileRepository) FindTypstFileByID(_ context.Context, id uuid.UUID) (*domainFile.TypstFile, error) {
+func (r *FileRepository) FindTypstFileByID(_ context.Context, id uuid.UUID) (*domainFile.TypstFile, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -53,7 +53,7 @@ func (r *MemoryFileRepository) FindTypstFileByID(_ context.Context, id uuid.UUID
 	return f, nil
 }
 
-func (r *MemoryFileRepository) FindBinaryFileByID(_ context.Context, id uuid.UUID) (*domainFile.BinaryFile, error) {
+func (r *FileRepository) FindBinaryFileByID(_ context.Context, id uuid.UUID) (*domainFile.BinaryFile, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -64,7 +64,7 @@ func (r *MemoryFileRepository) FindBinaryFileByID(_ context.Context, id uuid.UUI
 	return f, nil
 }
 
-func (r *MemoryFileRepository) FindByProjectID(_ context.Context, projectID uuid.UUID) ([]domainFile.File, error) {
+func (r *FileRepository) FindByProjectID(_ context.Context, projectID uuid.UUID) ([]domainFile.File, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -85,7 +85,7 @@ func (r *MemoryFileRepository) FindByProjectID(_ context.Context, projectID uuid
 	return result, nil
 }
 
-func (r *MemoryFileRepository) DeleteFile(_ context.Context, id uuid.UUID) error {
+func (r *FileRepository) DeleteFile(_ context.Context, id uuid.UUID) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -102,14 +102,14 @@ func (r *MemoryFileRepository) DeleteFile(_ context.Context, id uuid.UUID) error
 	return nil
 }
 
-func (r *MemoryFileRepository) IsDeleted(_ context.Context, id uuid.UUID) (bool, error) {
+func (r *FileRepository) IsDeleted(_ context.Context, id uuid.UUID) (bool, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
 	return r.tombstones[id], nil
 }
 
-func (r *MemoryFileRepository) FindEntriesByProjectID(_ context.Context, projectID uuid.UUID) ([]*domainEntry.Entry, error) {
+func (r *FileRepository) FindEntriesByProjectID(_ context.Context, projectID uuid.UUID) ([]*domainEntry.Entry, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 

@@ -20,6 +20,7 @@ const (
 	keyIsDeleted = "is_deleted"
 	keyFiles     = "files"
 	keyBlocks    = "blocks"
+	keyContent   = "content"
 )
 
 type YjsMerger struct{}
@@ -30,7 +31,6 @@ func NewYjsMerger() *YjsMerger {
 
 func (m *YjsMerger) MergeFile(state, delta []byte) ([]byte, []block.Block, error) {
 	doc := crdt.New()
-
 	if err := applyUpdates(doc, state, delta); err != nil {
 		return nil, nil, err
 	}
@@ -50,11 +50,8 @@ func (m *YjsMerger) SyncMetadata(
 	clientStateVector []byte,
 ) (metadataDelta []byte, meta *domainMeta.Metadata, err error) {
 	doc := crdt.New()
-
-	if len(clientDelta) > 0 {
-		if applyErr := doc.ApplyUpdate(clientDelta); applyErr != nil {
-			return nil, nil, fmt.Errorf("failed to apply client metadata delta: %w", applyErr)
-		}
+	if applyErr := applyUpdates(doc, clientDelta); applyErr != nil {
+		return nil, nil, fmt.Errorf("failed to apply client metadata delta: %w", applyErr)
 	}
 
 	populateMetadataDoc(doc, currentMeta)
@@ -79,10 +76,8 @@ func (m *YjsMerger) SyncMetadata(
 
 func (m *YjsMerger) ComputeDelta(serverState, clientStateVector []byte) ([]byte, error) {
 	doc := crdt.New()
-	if len(serverState) > 0 {
-		if err := doc.ApplyUpdate(serverState); err != nil {
-			return nil, fmt.Errorf("failed to apply server state update: %w", err)
-		}
+	if err := applyUpdates(doc, serverState); err != nil {
+		return nil, fmt.Errorf("failed to apply server state update: %w", err)
 	}
 
 	stateVector, err := crdt.DecodeStateVectorV1(clientStateVector)
@@ -97,6 +92,7 @@ func populateMetadataDoc(doc *crdt.Doc, currentMeta *domainMeta.Metadata) {
 	if currentMeta == nil {
 		return
 	}
+
 	filesMap := doc.GetMap(keyFiles)
 	existingKeys := make(map[string]bool)
 	if filesMap != nil {
@@ -108,16 +104,16 @@ func populateMetadataDoc(doc *crdt.Doc, currentMeta *domainMeta.Metadata) {
 	doc.Transact(func(txn *crdt.Transaction) {
 		m := txn.GetMap(keyFiles)
 		for _, entry := range currentMeta.Entries() {
-			if existingKeys[entry.ID().String()] {
+			idStr := entry.ID().String()
+			if existingKeys[idStr] {
 				continue
 			}
-			fileEntry := map[string]any{
-				keyID:        entry.ID().String(),
+			m.Set(txn, idStr, map[string]any{
+				keyID:        idStr,
 				keyName:      entry.Name(),
 				keyType:      string(entry.Type()),
 				keyIsDeleted: entry.IsDeleted(),
-			}
-			m.Set(txn, entry.ID().String(), fileEntry)
+			})
 		}
 	})
 }
@@ -147,18 +143,7 @@ func extractMetadataEntries(doc *crdt.Doc) ([]*domainEntry.Entry, error) {
 }
 
 func parseMetadataEntry(key string, val any) (*domainEntry.Entry, error) {
-	var idStr, name, typeStr string
-	var isDeleted bool
-
-	switch v := val.(type) {
-	case map[string]any:
-		idStr, name, typeStr, isDeleted = parseMetadataFromMap(v)
-	case *crdt.YMap:
-		idStr, name, typeStr, isDeleted = parseMetadataFromYMap(v)
-	default:
-		return nil, fmt.Errorf("invalid metadata entry type: %T", val)
-	}
-
+	idStr := getStringField(val, keyID)
 	if idStr == "" {
 		idStr = key
 	}
@@ -167,70 +152,16 @@ func parseMetadataEntry(key string, val any) (*domainEntry.Entry, error) {
 		return nil, fmt.Errorf("invalid metadata file uuid %q: %w", idStr, err)
 	}
 
+	name := getStringField(val, keyName)
+	typeStr := getStringField(val, keyType)
+	isDeleted := getBoolField(val, keyIsDeleted)
+
 	entry, err := domainEntry.NewEntry(id, name, domainFile.Type(typeStr), isDeleted, time.Now())
 	if err != nil {
 		return nil, fmt.Errorf("failed to create entry: %w", err)
 	}
 
 	return entry, nil
-}
-
-func parseMetadataFromMap(v map[string]any) (id, name, typeStr string, isDeleted bool) {
-	id = extractString(v[keyID])
-	name = extractString(v[keyName])
-	typeStr = extractString(v[keyType])
-	if del, ok := v[keyIsDeleted].(bool); ok {
-		isDeleted = del
-	}
-	return id, name, typeStr, isDeleted
-}
-
-func parseMetadataFromYMap(v *crdt.YMap) (id, name, typeStr string, isDeleted bool) {
-	if val, ok := v.Get(keyID); ok {
-		id = extractString(val)
-	}
-	if val, ok := v.Get(keyName); ok {
-		name = extractString(val)
-	}
-	if val, ok := v.Get(keyType); ok {
-		typeStr = extractString(val)
-	}
-	if val, ok := v.Get(keyIsDeleted); ok {
-		if del, ok := val.(bool); ok {
-			isDeleted = del
-		}
-	}
-	return id, name, typeStr, isDeleted
-}
-
-func computeMetadataDelta(doc *crdt.Doc, stateVectorBytes []byte, hasClientDelta bool) ([]byte, error) {
-	if len(stateVectorBytes) > 0 {
-		sv, err := crdt.DecodeStateVectorV1(stateVectorBytes)
-		if err != nil {
-			return nil, fmt.Errorf("failed to decode client metadata state vector: %w", err)
-		}
-		return crdt.EncodeStateAsUpdateV1(doc, sv), nil
-	}
-
-	if hasClientDelta {
-		return doc.EncodeStateAsUpdate(), nil
-	}
-
-	return nil, nil
-}
-
-func applyUpdates(doc *crdt.Doc, state, delta []byte) error {
-	if len(state) > 0 {
-		if err := doc.ApplyUpdate(state); err != nil {
-			return fmt.Errorf("failed to apply current state update: %w", err)
-		}
-	}
-	if len(delta) > 0 {
-		if err := doc.ApplyUpdate(delta); err != nil {
-			return fmt.Errorf("failed to apply delta update: %w", err)
-		}
-	}
-	return nil
 }
 
 func extractBlocks(doc *crdt.Doc) ([]block.Block, error) {
@@ -253,24 +184,8 @@ func extractBlocks(doc *crdt.Doc) ([]block.Block, error) {
 }
 
 func parseBlockElement(v any, doc *crdt.Doc) (block.Block, error) {
-	var idStr, name, content string
-
-	switch v := v.(type) {
-	case map[string]any:
-		idStr = extractString(v[keyID])
-		name = extractString(v[keyName])
-		content = extractString(v["content"])
-	case *crdt.YMap:
-		if idVal, ok := v.Get(keyID); ok {
-			idStr = extractString(idVal)
-		}
-		if nameVal, ok := v.Get(keyName); ok {
-			name = extractString(nameVal)
-		}
-		if contentVal, ok := v.Get("content"); ok {
-			content = extractString(contentVal)
-		}
-	default:
+	idStr := getStringField(v, keyID)
+	if idStr == "" {
 		return block.Block{}, fmt.Errorf("invalid element type: %T", v)
 	}
 
@@ -279,12 +194,12 @@ func parseBlockElement(v any, doc *crdt.Doc) (block.Block, error) {
 		return block.Block{}, fmt.Errorf("failed to parse block uuid %q: %w", idStr, err)
 	}
 
+	content := getStringField(v, keyContent)
 	if content == "" {
-		text := doc.GetText("block:" + idStr)
-		content = text.ToString()
+		content = doc.GetText("block:" + idStr).ToString()
 	}
 
-	b, err := block.NewBlock(id, name, content)
+	b, err := block.NewBlock(id, getStringField(v, keyName), content)
 	if err != nil {
 		return block.Block{}, fmt.Errorf("failed to create block: %w", err)
 	}
@@ -292,7 +207,50 @@ func parseBlockElement(v any, doc *crdt.Doc) (block.Block, error) {
 	return b, nil
 }
 
-func extractString(val any) string {
+func computeMetadataDelta(doc *crdt.Doc, stateVectorBytes []byte, hasClientDelta bool) ([]byte, error) {
+	if len(stateVectorBytes) > 0 {
+		sv, err := crdt.DecodeStateVectorV1(stateVectorBytes)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decode client metadata state vector: %w", err)
+		}
+		return crdt.EncodeStateAsUpdateV1(doc, sv), nil
+	}
+
+	if hasClientDelta {
+		return doc.EncodeStateAsUpdate(), nil
+	}
+
+	return nil, nil
+}
+
+func applyUpdates(doc *crdt.Doc, updates ...[]byte) error {
+	for _, u := range updates {
+		if len(u) > 0 {
+			if err := doc.ApplyUpdate(u); err != nil {
+				return fmt.Errorf("failed to apply update: %w", err)
+			}
+		}
+	}
+	return nil
+}
+
+func getField(item any, key string) (any, bool) {
+	switch v := item.(type) {
+	case map[string]any:
+		val, ok := v[key]
+		return val, ok
+	case *crdt.YMap:
+		return v.Get(key)
+	default:
+		return nil, false
+	}
+}
+
+func getStringField(item any, key string) string {
+	val, ok := getField(item, key)
+	if !ok {
+		return ""
+	}
 	switch v := val.(type) {
 	case string:
 		return v
@@ -306,4 +264,13 @@ func extractString(val any) string {
 		}
 	}
 	return ""
+}
+
+func getBoolField(item any, key string) bool {
+	val, ok := getField(item, key)
+	if !ok {
+		return false
+	}
+	b, _ := val.(bool)
+	return b
 }

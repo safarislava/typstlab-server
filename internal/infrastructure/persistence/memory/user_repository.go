@@ -1,4 +1,4 @@
-package persistence
+package memory
 
 import (
 	"context"
@@ -9,18 +9,18 @@ import (
 	domain "github.com/safarislava/typstlab-server/internal/domain/user"
 )
 
-type MemoryUserRepository struct {
+type UserRepository struct {
 	mu    sync.RWMutex
 	store map[string]*domain.User
 }
 
-func NewMemoryUserRepository() *MemoryUserRepository {
-	return &MemoryUserRepository{
+func NewMemoryUserRepository() *UserRepository {
+	return &UserRepository{
 		store: make(map[string]*domain.User),
 	}
 }
 
-func (r *MemoryUserRepository) Save(_ context.Context, u *domain.User) error {
+func (r *UserRepository) Save(_ context.Context, u *domain.User) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -28,7 +28,7 @@ func (r *MemoryUserRepository) Save(_ context.Context, u *domain.User) error {
 	return nil
 }
 
-func (r *MemoryUserRepository) FindByEmail(_ context.Context, email string) (*domain.User, error) {
+func (r *UserRepository) FindByEmail(_ context.Context, email string) (*domain.User, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
@@ -41,7 +41,7 @@ func (r *MemoryUserRepository) FindByEmail(_ context.Context, email string) (*do
 	return nil, domain.ErrUserNotFound
 }
 
-func (r *MemoryUserRepository) FindByID(_ context.Context, id uuid.UUID) (*domain.User, error) {
+func (r *UserRepository) FindByID(_ context.Context, id uuid.UUID) (*domain.User, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
