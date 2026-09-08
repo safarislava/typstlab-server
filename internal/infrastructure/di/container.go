@@ -1,6 +1,7 @@
 package di
 
 import (
+	"context"
 	"net/http"
 	"sync"
 	"time"
@@ -8,6 +9,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	appAuth "github.com/safarislava/typstlab-server/internal/application/auth"
 	entryApp "github.com/safarislava/typstlab-server/internal/application/entry"
@@ -31,26 +33,68 @@ import (
 	projectHttp "github.com/safarislava/typstlab-server/internal/infrastructure/http/project"
 	syncHttp "github.com/safarislava/typstlab-server/internal/infrastructure/http/sync"
 	userHttp "github.com/safarislava/typstlab-server/internal/infrastructure/http/user"
+	"github.com/safarislava/typstlab-server/internal/infrastructure/persistence/composite"
 	"github.com/safarislava/typstlab-server/internal/infrastructure/persistence/memory"
+	"github.com/safarislava/typstlab-server/internal/infrastructure/persistence/postgres"
+	"github.com/safarislava/typstlab-server/internal/infrastructure/persistence/s3"
 )
 
 const headerContentType = "Content-Type"
 
+// FileRepository groups all file-related repository operations across typst, binary, and metadata.
+type FileRepository interface {
+	fileApp.Repository
+	typstFile.Repository
+	binaryFile.Repository
+	metadataApp.Repository
+}
+
+// Option configures DI container initialization.
+type Option func(*Container)
+
+// WithPool sets a custom PostgreSQL connection pool.
+func WithPool(pool *pgxpool.Pool) Option {
+	return func(c *Container) {
+		c.pool = pool
+	}
+}
+
+// WithS3Storage sets a custom S3 storage client.
+func WithS3Storage(storage s3.Storage) Option {
+	return func(c *Container) {
+		c.s3Storage = storage
+	}
+}
+
+// WithMemoryRepositories forces the container to use in-memory repositories.
+func WithMemoryRepositories() Option {
+	return func(c *Container) {
+		c.useMemory = true
+	}
+}
+
 // Container holds dependencies and lazily initializes them on demand.
 type Container struct {
-	cfg *config.Config
+	cfg       *config.Config
+	useMemory bool
+
+	// Infrastructure / Persistence
+	pool          *pgxpool.Pool
+	poolOnce      sync.Once
+	s3Storage     s3.Storage
+	s3StorageOnce sync.Once
 
 	// Repositories
-	projectRepo     *memory.ProjectRepository
+	projectRepo     projectApp.Repository
 	projectRepoOnce sync.Once
 
-	fileRepo     *memory.FileRepository
+	fileRepo     FileRepository
 	fileRepoOnce sync.Once
 
-	userRepo     *memory.UserRepository
+	userRepo     userApp.Repository
 	userRepoOnce sync.Once
 
-	sessionRepo     *memory.SessionRepository
+	sessionRepo     sessionApp.Repository
 	sessionRepoOnce sync.Once
 
 	// Infrastructure
@@ -128,10 +172,14 @@ type Container struct {
 }
 
 // New creates a new lazy DI Container instance.
-func New(cfg *config.Config) *Container {
-	return &Container{
+func New(cfg *config.Config, opts ...Option) *Container {
+	c := &Container{
 		cfg: cfg,
 	}
+	for _, opt := range opts {
+		opt(c)
+	}
+	return c
 }
 
 // Config returns the application configuration.
@@ -139,36 +187,131 @@ func (c *Container) Config() *config.Config {
 	return c.cfg
 }
 
+// Close closes any long-lived resources such as the database pool.
+func (c *Container) Close() {
+	if c.pool != nil {
+		c.pool.Close()
+	}
+}
+
+// Pool lazily initializes and returns the PostgreSQL connection pool.
+func (c *Container) Pool() *pgxpool.Pool {
+	c.poolOnce.Do(func() {
+		if c.pool == nil && !c.useMemory && c.cfg != nil && c.cfg.DatabaseURL != "" {
+			pool, err := postgres.NewPool(context.Background(), c.cfg.DatabaseURL)
+			if err == nil {
+				c.pool = pool
+			}
+		}
+	})
+	return c.pool
+}
+
+// S3Storage lazily initializes and returns the S3 blob storage client.
+func (c *Container) S3Storage() s3.Storage {
+	c.s3StorageOnce.Do(func() {
+		if c.s3Storage == nil && !c.useMemory && c.cfg != nil && c.cfg.S3.Endpoint != "" {
+			client, err := s3.NewClient(&s3.Config{
+				Endpoint:  c.cfg.S3.Endpoint,
+				Bucket:    c.cfg.S3.Bucket,
+				AccessKey: c.cfg.S3.AccessKey,
+				SecretKey: c.cfg.S3.SecretKey,
+				UseSSL:    c.cfg.S3.UseSSL,
+				Region:    c.cfg.S3.Region,
+			})
+			if err == nil {
+				c.s3Storage = client
+			}
+		}
+	})
+	return c.s3Storage
+}
+
 // ProjectRepo lazily initializes and returns the project repository.
-func (c *Container) ProjectRepo() *memory.ProjectRepository {
+func (c *Container) ProjectRepo() projectApp.Repository {
 	c.projectRepoOnce.Do(func() {
-		c.projectRepo = memory.NewMemoryProjectRepository()
+		if c.projectRepo == nil {
+			c.projectRepo = c.buildProjectRepo()
+		}
 	})
 	return c.projectRepo
 }
 
-// FileRepo lazily initializes and returns the file repository.
-func (c *Container) FileRepo() *memory.FileRepository {
+func (c *Container) buildProjectRepo() projectApp.Repository {
+	if !c.useMemory {
+		if pool := c.Pool(); pool != nil {
+			return postgres.NewProjectRepository(pool)
+		}
+	}
+	return memory.NewMemoryProjectRepository()
+}
+
+// FileRepo lazily initializes and returns the composite or in-memory file repository.
+func (c *Container) FileRepo() FileRepository {
 	c.fileRepoOnce.Do(func() {
-		c.fileRepo = memory.NewMemoryFileRepository()
+		if c.fileRepo == nil {
+			c.fileRepo = c.buildFileRepo()
+		}
 	})
 	return c.fileRepo
 }
 
+func (c *Container) buildFileRepo() FileRepository {
+	if c.useMemory {
+		return memory.NewMemoryFileRepository()
+	}
+	pool := c.Pool()
+	if pool == nil {
+		return memory.NewMemoryFileRepository()
+	}
+	pgRepo := postgres.NewFileRepository(pool)
+	s3Storage := c.S3Storage()
+	if s3Storage == nil {
+		return pgRepo
+	}
+	compRepo, err := composite.NewFileRepository(pgRepo, s3Storage)
+	if err != nil {
+		return pgRepo
+	}
+	return compRepo
+}
+
 // UserRepo lazily initializes and returns the user repository.
-func (c *Container) UserRepo() *memory.UserRepository {
+func (c *Container) UserRepo() userApp.Repository {
 	c.userRepoOnce.Do(func() {
-		c.userRepo = memory.NewMemoryUserRepository()
+		if c.userRepo == nil {
+			c.userRepo = c.buildUserRepo()
+		}
 	})
 	return c.userRepo
 }
 
+func (c *Container) buildUserRepo() userApp.Repository {
+	if !c.useMemory {
+		if pool := c.Pool(); pool != nil {
+			return postgres.NewUserRepository(pool)
+		}
+	}
+	return memory.NewMemoryUserRepository()
+}
+
 // SessionRepo lazily initializes and returns the session repository.
-func (c *Container) SessionRepo() *memory.SessionRepository {
+func (c *Container) SessionRepo() sessionApp.Repository {
 	c.sessionRepoOnce.Do(func() {
-		c.sessionRepo = memory.NewMemorySessionRepository()
+		if c.sessionRepo == nil {
+			c.sessionRepo = c.buildSessionRepo()
+		}
 	})
 	return c.sessionRepo
+}
+
+func (c *Container) buildSessionRepo() sessionApp.Repository {
+	if !c.useMemory {
+		if pool := c.Pool(); pool != nil {
+			return postgres.NewSessionRepository(pool)
+		}
+	}
+	return memory.NewMemorySessionRepository()
 }
 
 // Hasher lazily initializes and returns the password hasher.

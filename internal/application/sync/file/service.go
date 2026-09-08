@@ -6,7 +6,6 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/safarislava/typstlab-server/internal/domain/block"
 	domainEntry "github.com/safarislava/typstlab-server/internal/domain/entry"
 	domainFile "github.com/safarislava/typstlab-server/internal/domain/file"
 	domainMeta "github.com/safarislava/typstlab-server/internal/domain/metadata"
@@ -43,7 +42,7 @@ type GeneralFileService interface {
 }
 
 type Merger interface {
-	MergeFile(state, delta []byte) (newState []byte, updatedBlocks []block.Block, err error)
+	MergeFile(state, delta []byte) (newState []byte, err error)
 }
 
 type DeltaCalculator interface {
@@ -85,12 +84,12 @@ func (s *Service) ApplyFileChanges(ctx context.Context, req ApplyFileChangesRequ
 		return nil, fmt.Errorf("failed to find typst file: %w", err)
 	}
 
-	state, blocks, err := s.fileMerger.MergeFile(f.State(), req.Delta)
+	state, err := s.fileMerger.MergeFile(f.State(), req.Delta)
 	if err != nil {
 		return nil, fmt.Errorf("failed to merge file delta: %w", err)
 	}
 
-	if err := f.UpdateState(state, blocks); err != nil {
+	if err := f.UpdateState(state); err != nil {
 		return nil, fmt.Errorf("failed to update typst file aggregate state: %w", err)
 	}
 

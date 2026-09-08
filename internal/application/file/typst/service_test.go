@@ -58,6 +58,7 @@ func TestService_Upload_Success(t *testing.T) {
 		ID:        fileID,
 		ProjectID: projectID,
 		Name:      testFileName,
+		State:     []byte("test-state"),
 	}
 	f, err := svc.Upload(context.Background(), req)
 	if err != nil {
@@ -65,6 +66,9 @@ func TestService_Upload_Success(t *testing.T) {
 	}
 	if f.ID() != fileID || f.Name() != testFileName || f.ProjectID() != projectID {
 		t.Errorf("incorrect file fields: %+v", f)
+	}
+	if string(f.State()) != "test-state" {
+		t.Errorf("expected test-state, got %s", string(f.State()))
 	}
 }
 
@@ -106,7 +110,7 @@ func TestService_Save(t *testing.T) {
 	repo := newMockRepository()
 	svc := NewService(repo)
 
-	tf, _ := domainFile.NewTypstFile(uuid.New(), uuid.New(), docFileName, nil, nil, time.Now())
+	tf, _ := domainFile.NewTypstFile(uuid.New(), uuid.New(), docFileName, nil, time.Now())
 	if err := svc.Save(context.Background(), tf); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -123,7 +127,7 @@ func TestService_GetByID(t *testing.T) {
 	svc := NewService(repo)
 
 	fileID := uuid.New()
-	tf, _ := domainFile.NewTypstFile(fileID, uuid.New(), docFileName, []byte("state"), nil, time.Now())
+	tf, _ := domainFile.NewTypstFile(fileID, uuid.New(), docFileName, []byte("state"), time.Now())
 	_ = repo.SaveTypstFile(context.Background(), tf)
 
 	f, err := svc.GetByID(context.Background(), fileID)
@@ -132,6 +136,9 @@ func TestService_GetByID(t *testing.T) {
 	}
 	if f.ID() != fileID {
 		t.Errorf("expected file id %v, got %v", fileID, f.ID())
+	}
+	if string(f.State()) != "state" {
+		t.Errorf("expected state, got %s", string(f.State()))
 	}
 
 	_, err = svc.GetByID(context.Background(), uuid.New())

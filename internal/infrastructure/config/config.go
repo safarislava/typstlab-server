@@ -5,14 +5,25 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 )
+
+type S3Config struct {
+	Endpoint  string `json:"endpoint"`
+	Bucket    string `json:"bucket"`
+	AccessKey string `json:"access_key"`
+	SecretKey string `json:"secret_key"`
+	UseSSL    bool   `json:"use_ssl"`
+	Region    string `json:"region"`
+}
 
 type Config struct {
 	Port           string   `json:"port"`
 	JWTSecret      string   `json:"jwt_secret"`
 	DatabaseURL    string   `json:"database_url"`
 	AllowedOrigins []string `json:"allowed_origins"`
+	S3             S3Config `json:"s3"`
 }
 
 var (
@@ -44,6 +55,11 @@ func Load(path string) (*Config, error) {
 }
 
 func applyEnvOverrides(cfg *Config) {
+	applyBaseEnvOverrides(cfg)
+	applyS3EnvOverrides(&cfg.S3)
+}
+
+func applyBaseEnvOverrides(cfg *Config) {
 	if envPort := os.Getenv("PORT"); envPort != "" {
 		cfg.Port = envPort
 	}
@@ -55,6 +71,29 @@ func applyEnvOverrides(cfg *Config) {
 	}
 	if envOrigins := os.Getenv("ALLOWED_ORIGINS"); envOrigins != "" {
 		cfg.AllowedOrigins = parseOrigins(envOrigins)
+	}
+}
+
+func applyS3EnvOverrides(s3Cfg *S3Config) {
+	if envS3Endpoint := os.Getenv("S3_ENDPOINT"); envS3Endpoint != "" {
+		s3Cfg.Endpoint = envS3Endpoint
+	}
+	if envS3Bucket := os.Getenv("S3_BUCKET"); envS3Bucket != "" {
+		s3Cfg.Bucket = envS3Bucket
+	}
+	if envS3AccessKey := os.Getenv("S3_ACCESS_KEY"); envS3AccessKey != "" {
+		s3Cfg.AccessKey = envS3AccessKey
+	}
+	if envS3SecretKey := os.Getenv("S3_SECRET_KEY"); envS3SecretKey != "" {
+		s3Cfg.SecretKey = envS3SecretKey
+	}
+	if envS3UseSSL := os.Getenv("S3_USE_SSL"); envS3UseSSL != "" {
+		if val, err := strconv.ParseBool(envS3UseSSL); err == nil {
+			s3Cfg.UseSSL = val
+		}
+	}
+	if envS3Region := os.Getenv("S3_REGION"); envS3Region != "" {
+		s3Cfg.Region = envS3Region
 	}
 }
 

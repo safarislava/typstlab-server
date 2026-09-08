@@ -609,20 +609,9 @@ components:
           type: string
           format: date-time
 
-    BlockResponse:
-      type: object
-      properties:
-        id:
-          type: string
-          format: uuid
-        name:
-          type: string
-        content:
-          type: string
-
     TypstFileResponse:
       type: object
-      description: Formal Typst file format with CRDT state vector and structured markup blocks.
+      description: Typst file format with CRDT binary state.
       properties:
         id:
           type: string
@@ -639,10 +628,6 @@ components:
           type: string
           format: byte
           description: Base64-encoded merged Yjs binary state
-        blocks:
-          type: array
-          items:
-            $ref: '#/components/schemas/BlockResponse'
         updated_at:
           type: string
           format: date-time

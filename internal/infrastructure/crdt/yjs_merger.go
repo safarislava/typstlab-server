@@ -7,7 +7,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/reearth/ygo/crdt"
 
-	"github.com/safarislava/typstlab-server/internal/domain/block"
 	domainEntry "github.com/safarislava/typstlab-server/internal/domain/entry"
 	domainFile "github.com/safarislava/typstlab-server/internal/domain/file"
 	domainMeta "github.com/safarislava/typstlab-server/internal/domain/metadata"
@@ -19,8 +18,6 @@ const (
 	keyType      = "type"
 	keyIsDeleted = "is_deleted"
 	keyFiles     = "files"
-	keyBlocks    = "blocks"
-	keyContent   = "content"
 )
 
 type YjsMerger struct{}
@@ -29,18 +26,13 @@ func NewYjsMerger() *YjsMerger {
 	return &YjsMerger{}
 }
 
-func (m *YjsMerger) MergeFile(state, delta []byte) ([]byte, []block.Block, error) {
+func (m *YjsMerger) MergeFile(state, delta []byte) ([]byte, error) {
 	doc := crdt.New()
 	if err := applyUpdates(doc, state, delta); err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
-	updatedBlocks, err := extractBlocks(doc)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	return doc.EncodeStateAsUpdate(), updatedBlocks, nil
+	return doc.EncodeStateAsUpdate(), nil
 }
 
 func (m *YjsMerger) SyncMetadata(
@@ -162,49 +154,6 @@ func parseMetadataEntry(key string, val any) (*domainEntry.Entry, error) {
 	}
 
 	return entry, nil
-}
-
-func extractBlocks(doc *crdt.Doc) ([]block.Block, error) {
-	blocks := doc.GetArray(keyBlocks).ToSlice()
-	updatedBlocks := make([]block.Block, 0, len(blocks))
-	seenIDs := make(map[uuid.UUID]bool)
-
-	for i, v := range blocks {
-		b, err := parseBlockElement(v, doc)
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse block element at index %d: %w", i, err)
-		}
-		if !seenIDs[b.ID()] {
-			seenIDs[b.ID()] = true
-			updatedBlocks = append(updatedBlocks, b)
-		}
-	}
-
-	return updatedBlocks, nil
-}
-
-func parseBlockElement(v any, doc *crdt.Doc) (block.Block, error) {
-	idStr := getStringField(v, keyID)
-	if idStr == "" {
-		return block.Block{}, fmt.Errorf("invalid element type: %T", v)
-	}
-
-	id, err := uuid.Parse(idStr)
-	if err != nil {
-		return block.Block{}, fmt.Errorf("failed to parse block uuid %q: %w", idStr, err)
-	}
-
-	content := getStringField(v, keyContent)
-	if content == "" {
-		content = doc.GetText("block:" + idStr).ToString()
-	}
-
-	b, err := block.NewBlock(id, getStringField(v, keyName), content)
-	if err != nil {
-		return block.Block{}, fmt.Errorf("failed to create block: %w", err)
-	}
-
-	return b, nil
 }
 
 func computeMetadataDelta(doc *crdt.Doc, stateVectorBytes []byte, hasClientDelta bool) ([]byte, error) {

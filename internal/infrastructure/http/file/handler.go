@@ -14,10 +14,8 @@ import (
 	binaryApp "github.com/safarislava/typstlab-server/internal/application/file/binary"
 	typstApp "github.com/safarislava/typstlab-server/internal/application/file/typst"
 	syncApp "github.com/safarislava/typstlab-server/internal/application/sync"
-	domainBlock "github.com/safarislava/typstlab-server/internal/domain/block"
 	domainFile "github.com/safarislava/typstlab-server/internal/domain/file"
 	"github.com/safarislava/typstlab-server/internal/infrastructure/http/middleware"
-	"github.com/safarislava/typstlab-server/internal/infrastructure/serialization"
 )
 
 type TypstService interface {
@@ -72,23 +70,12 @@ func (h *Handler) writeJSONFileResponse(w http.ResponseWriter, f domainFile.File
 }
 
 func (h *Handler) writeJSONTypstFileResponse(w http.ResponseWriter, f *domainFile.TypstFile, status int) {
-	blocks := f.Blocks()
-	jsonBlocks := make([]JSONBlockResponse, len(blocks))
-	for i, b := range blocks {
-		jsonBlocks[i] = JSONBlockResponse{
-			ID:      b.ID().String(),
-			Name:    b.Name(),
-			Content: b.Content(),
-		}
-	}
-
 	resp := JSONTypstFileResponse{
 		ID:        f.ID().String(),
 		ProjectID: f.ProjectID().String(),
 		Name:      f.Name(),
 		Type:      string(f.Type()),
 		State:     f.State(),
-		Blocks:    jsonBlocks,
 		UpdatedAt: f.UpdatedAt().Format(time.RFC3339),
 	}
 
@@ -155,20 +142,13 @@ type JSONFileResponse struct {
 	UpdatedAt string `json:"updated_at"`
 }
 
-type JSONBlockResponse struct {
-	ID      string `json:"id"`
-	Name    string `json:"name"`
-	Content string `json:"content"`
-}
-
 type JSONTypstFileResponse struct {
-	ID        string              `json:"id"`
-	ProjectID string              `json:"project_id"`
-	Name      string              `json:"name"`
-	Type      string              `json:"type"`
-	State     []byte              `json:"state"`
-	Blocks    []JSONBlockResponse `json:"blocks"`
-	UpdatedAt string              `json:"updated_at"`
+	ID        string `json:"id"`
+	ProjectID string `json:"project_id"`
+	Name      string `json:"name"`
+	Type      string `json:"type"`
+	State     []byte `json:"state"`
+	UpdatedAt string `json:"updated_at"`
 }
 
 type JSONBinaryFileResponse struct {
@@ -184,15 +164,8 @@ type jsonApplyFileChangesRequest struct {
 	Delta []byte `json:"delta"`
 }
 
-func (h *Handler) initTypstFile(content []byte) (state []byte, blocks []domainBlock.Block, err error) {
-	if len(content) == 0 {
-		return nil, nil, nil
-	}
-	state, blocks, err = serialization.DeserializeTypstFile(content)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to deserialize typst file: %w", err)
-	}
-	return state, blocks, nil
+func isTypstFile(name string) bool {
+	return strings.HasSuffix(name, ".tld") || strings.HasSuffix(name, ".typ") || strings.HasSuffix(name, ".typxml")
 }
 
 func (h *Handler) UploadFile(w http.ResponseWriter, r *http.Request) {
@@ -217,20 +190,12 @@ func (h *Handler) UploadFile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var f domainFile.File
-	if strings.HasSuffix(name, ".typxml") {
-		state, blocks, errInit := h.initTypstFile(content)
-		if errInit != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			_, _ = w.Write([]byte(errInit.Error()))
-			return
-		}
-
+	if isTypstFile(name) {
 		req := typstApp.UploadRequest{
 			ID:        id,
 			ProjectID: p.ID(),
 			Name:      name,
-			State:     state,
-			Blocks:    blocks,
+			State:     content,
 		}
 		f, err = h.typstService.Upload(r.Context(), &req)
 	} else {

@@ -4,8 +4,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-
-	"github.com/safarislava/typstlab-server/internal/domain/block"
 )
 
 type Type string
@@ -72,7 +70,6 @@ type TypstFile struct {
 	projectID uuid.UUID
 	name      string
 	state     []byte
-	blocks    []block.Block
 	updatedAt time.Time
 }
 
@@ -103,19 +100,11 @@ func (f *TypstFile) State() []byte {
 	return append([]byte(nil), f.state...)
 }
 
-func (f *TypstFile) Blocks() []block.Block {
-	if f.blocks == nil {
-		return nil
-	}
-	return append([]block.Block(nil), f.blocks...)
-}
-
-func (f *TypstFile) UpdateState(state []byte, blocks []block.Block) error {
+func (f *TypstFile) UpdateState(state []byte) error {
 	if state == nil {
 		return ErrNilState
 	}
 	f.state = append([]byte(nil), state...)
-	f.blocks = append([]block.Block(nil), blocks...)
 	f.updatedAt = time.Now()
 	return nil
 }

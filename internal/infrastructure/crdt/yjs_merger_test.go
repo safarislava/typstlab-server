@@ -54,21 +54,23 @@ func TestYjsMerger_MergeFile_Initial(t *testing.T) {
 
 	delta := doc.EncodeStateAsUpdate()
 
-	_, blocks, err := merger.MergeFile(nil, delta)
+	state, err := merger.MergeFile(nil, delta)
 	if err != nil {
 		t.Fatalf("failed to merge file: %v", err)
 	}
 
-	if len(blocks) != 2 {
-		t.Fatalf("expected 2 blocks, got %d", len(blocks))
+	if len(state) == 0 {
+		t.Fatal("expected non-empty merged state")
 	}
 
-	if blocks[0].ID() != blockID1 || blocks[0].Name() != testIntroName || blocks[0].Content() != testIntroContent {
-		t.Errorf("block 1 mismatch: %+v", blocks[0])
+	docResult := crdt.New()
+	if applyErr := docResult.ApplyUpdate(state); applyErr != nil {
+		t.Fatalf("failed to apply merged state: %v", applyErr)
 	}
 
-	if blocks[1].ID() != blockID2 || blocks[1].Name() != testSec1Name || blocks[1].Content() != testSec1Content {
-		t.Errorf("block 2 mismatch: %+v", blocks[1])
+	arr := docResult.GetArray("blocks")
+	if arr.Len() != 2 {
+		t.Fatalf("expected 2 elements in blocks array, got %d", arr.Len())
 	}
 }
 
@@ -111,26 +113,23 @@ func TestYjsMerger_MergeFile_UpdateAndSwap(t *testing.T) {
 
 	delta2 := doc2.EncodeStateAsUpdate()
 
-	newState, blocks, err := merger.MergeFile(initialState, delta2)
+	newState, err := merger.MergeFile(initialState, delta2)
 	if err != nil {
 		t.Fatalf("failed to merge second delta: %v", err)
 	}
 
-	if len(blocks) != 2 {
-		t.Fatalf("expected 2 blocks, got %d", len(blocks))
-	}
-
-	// Blocks should be swapped
-	if blocks[0].ID() != blockID2 || blocks[0].Content() != testSec1Content {
-		t.Errorf("block 0 (swapped) mismatch: %+v", blocks[0])
-	}
-
-	if blocks[1].ID() != blockID1 || blocks[1].Content() != testIntroContent+" - Appended!" {
-		t.Errorf("block 1 (swapped and modified) mismatch: %+v", blocks[1])
-	}
-
 	if bytes.Equal(initialState, newState) {
 		t.Error("expected state updates to change the binary update state representation")
+	}
+
+	docMerged := crdt.New()
+	if applyErr := docMerged.ApplyUpdate(newState); applyErr != nil {
+		t.Fatalf("failed to apply merged state: %v", applyErr)
+	}
+
+	t1 := docMerged.GetText("block:" + blockID1.String()).ToString()
+	if t1 != testIntroContent+" - Appended!" {
+		t.Errorf("expected text update, got %q", t1)
 	}
 }
 
@@ -144,24 +143,13 @@ func TestUserPayloadContent(t *testing.T) {
 	}
 
 	merger := NewYjsMerger()
-	_, blocks, err := merger.MergeFile(data, nil)
+	mergedState, err := merger.MergeFile(data, nil)
 	if err != nil {
 		t.Fatalf("failed to merge file: %v", err)
 	}
 
-	if len(blocks) != 1 {
-		t.Fatalf("expected 1 block, got %d", len(blocks))
-	}
-
-	expectedID := uuid.MustParse("94352898-89f7-427a-86fa-3a518a8e7c4b")
-	if blocks[0].ID() != expectedID {
-		t.Errorf("expected ID %s, got %s", expectedID, blocks[0].ID())
-	}
-	if blocks[0].Name() != "вфы" {
-		t.Errorf("expected name %q, got %q", "вфы", blocks[0].Name())
-	}
-	if blocks[0].Content() == "" {
-		t.Error("expected non-empty content, got empty string")
+	if len(mergedState) == 0 {
+		t.Fatal("expected non-empty merged state")
 	}
 }
 
@@ -309,15 +297,18 @@ func TestYjsMerger_MergeFile_WithYMapBlocks(t *testing.T) {
 
 	delta := doc.EncodeStateAsUpdate()
 
-	_, blocks, err := merger.MergeFile(nil, delta)
+	state, err := merger.MergeFile(nil, delta)
 	if err != nil {
 		t.Fatalf("failed to merge file with YMap block: %v", err)
 	}
 
-	if len(blocks) != 1 {
-		t.Fatalf("expected 1 block, got %d", len(blocks))
+	docMerged := crdt.New()
+	if applyErr := docMerged.ApplyUpdate(state); applyErr != nil {
+		t.Fatalf("failed to apply merged state: %v", applyErr)
 	}
-	if blocks[0].ID() != blockID || blocks[0].Name() != "Header Block" || blocks[0].Content() != "Direct content" {
-		t.Errorf("unexpected block values: %+v", blocks[0])
+
+	arr := docMerged.GetArray("blocks")
+	if arr.Len() != 1 {
+		t.Fatalf("expected 1 block in array, got %d", arr.Len())
 	}
 }

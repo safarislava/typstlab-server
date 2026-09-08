@@ -25,7 +25,7 @@ func setupTestRouter() *chi.Mux {
 	if err != nil {
 		panic(err)
 	}
-	return di.New(cfg).Router()
+	return di.New(cfg, di.WithMemoryRepositories()).Router()
 }
 
 func registerAndLogin(t *testing.T, router http.Handler, email, password string) string {
