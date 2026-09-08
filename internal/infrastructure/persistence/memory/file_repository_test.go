@@ -1,4 +1,4 @@
-package persistence
+package memory
 
 import (
 	"context"
@@ -11,7 +11,7 @@ import (
 	domainFile "github.com/safarislava/typstlab-server/internal/domain/file"
 )
 
-func createAndSaveTestTypstFile(ctx context.Context, t *testing.T, repo *MemoryFileRepository, projectID, fileID uuid.UUID) *domainFile.TypstFile {
+func createAndSaveTestTypstFile(ctx context.Context, t *testing.T, repo *FileRepository, projectID, fileID uuid.UUID) *domainFile.TypstFile {
 	t.Helper()
 	tf, err := domainFile.NewTypstFile(fileID, projectID, "doc.typ", []byte("initial-state"), []block.Block(nil), time.Now())
 	if err != nil {
@@ -24,7 +24,7 @@ func createAndSaveTestTypstFile(ctx context.Context, t *testing.T, repo *MemoryF
 	return tf
 }
 
-func createAndSaveTestBinaryFile(ctx context.Context, t *testing.T, repo *MemoryFileRepository, projectID, fileID uuid.UUID) *domainFile.BinaryFile {
+func createAndSaveTestBinaryFile(ctx context.Context, t *testing.T, repo *FileRepository, projectID, fileID uuid.UUID) *domainFile.BinaryFile {
 	t.Helper()
 	bf, err := domainFile.NewBinaryFile(fileID, projectID, "img.png", []byte{1, 2, 3}, time.Now())
 	if err != nil {

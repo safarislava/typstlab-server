@@ -1,4 +1,4 @@
-package persistence
+package memory
 
 import (
 	"context"
@@ -15,7 +15,7 @@ import (
 
 const testRepoRefreshToken = "my-refresh-token"
 
-func createAndSaveTestSession(ctx context.Context, t *testing.T, repo *MemorySessionRepository, tokenStr string, userID uuid.UUID) (session.Session, token.Token) {
+func createAndSaveTestSession(ctx context.Context, t *testing.T, repo *SessionRepository, tokenStr string, userID uuid.UUID) (session.Session, token.Token) {
 	t.Helper()
 	expiresAt := time.Now().Add(1 * time.Hour)
 

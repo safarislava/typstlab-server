@@ -1,4 +1,4 @@
-package persistence
+package memory
 
 import (
 	"context"
@@ -9,18 +9,18 @@ import (
 	domain "github.com/safarislava/typstlab-server/internal/domain/project"
 )
 
-type MemoryProjectRepository struct {
+type ProjectRepository struct {
 	mu    sync.RWMutex
 	store map[string]*domain.Project
 }
 
-func NewMemoryProjectRepository() *MemoryProjectRepository {
-	return &MemoryProjectRepository{
+func NewMemoryProjectRepository() *ProjectRepository {
+	return &ProjectRepository{
 		store: make(map[string]*domain.Project),
 	}
 }
 
-func (r *MemoryProjectRepository) Save(_ context.Context, p *domain.Project) error {
+func (r *ProjectRepository) Save(_ context.Context, p *domain.Project) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -28,7 +28,7 @@ func (r *MemoryProjectRepository) Save(_ context.Context, p *domain.Project) err
 	return nil
 }
 
-func (r *MemoryProjectRepository) FindByID(_ context.Context, id uuid.UUID) (*domain.Project, error) {
+func (r *ProjectRepository) FindByID(_ context.Context, id uuid.UUID) (*domain.Project, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
