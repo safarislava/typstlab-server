@@ -325,9 +325,7 @@ func TestHandler_ServeWS_CollaborationFlow(t *testing.T) {
 	pushTestMessage(t, env.conn, crdtMsg)
 
 	peerMsg := readClientMessage(t, peerClient)
-	if peerMsg.Type != domainCollab.MsgCRDTUpdate {
-		t.Errorf("expected peer to receive crdt_update, got %s", peerMsg.Type)
-	}
+	verifyCRDTBroadcast(t, peerMsg, env.userID)
 	if !crdtApplied {
 		t.Error("expected applyCRDTUpdate to be invoked")
 	}
@@ -348,4 +346,18 @@ func TestHandler_ServeWS_CollaborationFlow(t *testing.T) {
 	}
 
 	cancel()
+}
+
+func verifyCRDTBroadcast(t *testing.T, peerMsg Message, expectedSender uuid.UUID) {
+	t.Helper()
+	if peerMsg.Type != domainCollab.MsgCRDTUpdate {
+		t.Errorf("expected peer to receive crdt_update, got %s", peerMsg.Type)
+	}
+	var broadcast crdtBroadcastPayload
+	if err := json.Unmarshal(peerMsg.Payload, &broadcast); err != nil {
+		t.Fatalf("failed to unmarshal broadcast payload: %v", err)
+	}
+	if broadcast.SenderID != expectedSender {
+		t.Errorf("expected sender_id %s, got %s", expectedSender, broadcast.SenderID)
+	}
 }

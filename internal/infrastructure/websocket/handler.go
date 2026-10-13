@@ -205,26 +205,31 @@ func (h *Handler) handleSyncInit(ctx context.Context, client *Client, rawPayload
 	return nil
 }
 
-type crdtUpdatePayload struct {
+type crdtUpdateRequest struct {
+	FileID uuid.UUID `json:"file_id"`
+	Delta  []byte    `json:"delta"`
+}
+
+type crdtBroadcastPayload struct {
 	FileID   uuid.UUID `json:"file_id"`
 	SenderID uuid.UUID `json:"sender_id"`
 	Delta    []byte    `json:"delta"`
 }
 
 func (h *Handler) handleCRDTUpdate(ctx context.Context, client *Client, rawPayload json.RawMessage) error {
-	var payload crdtUpdatePayload
-	if err := json.Unmarshal(rawPayload, &payload); err != nil {
+	var req crdtUpdateRequest
+	if err := json.Unmarshal(rawPayload, &req); err != nil {
 		return fmt.Errorf("unmarshal crdt update payload: %w", err)
 	}
 
-	if err := h.collaborationService.ApplyCRDTUpdate(ctx, payload.FileID, payload.Delta); err != nil {
+	if err := h.collaborationService.ApplyCRDTUpdate(ctx, req.FileID, req.Delta); err != nil {
 		return fmt.Errorf("apply crdt changes: %w", err)
 	}
 
-	broadcastPayload := crdtUpdatePayload{
-		FileID:   payload.FileID,
+	broadcastPayload := crdtBroadcastPayload{
+		FileID:   req.FileID,
 		SenderID: client.UserID(),
-		Delta:    payload.Delta,
+		Delta:    req.Delta,
 	}
 
 	msg, err := NewMessage(domainCollab.MsgCRDTUpdate, broadcastPayload)
@@ -238,24 +243,28 @@ func (h *Handler) handleCRDTUpdate(ctx context.Context, client *Client, rawPaylo
 	return nil
 }
 
-type metadataUpdatePayload struct {
+type metadataUpdateRequest struct {
+	Delta []byte `json:"delta"`
+}
+
+type metadataBroadcastPayload struct {
 	SenderID uuid.UUID `json:"sender_id"`
 	Delta    []byte    `json:"delta"`
 }
 
 func (h *Handler) handleMetadataUpdate(ctx context.Context, client *Client, rawPayload json.RawMessage) error {
-	var payload metadataUpdatePayload
-	if err := json.Unmarshal(rawPayload, &payload); err != nil {
+	var req metadataUpdateRequest
+	if err := json.Unmarshal(rawPayload, &req); err != nil {
 		return fmt.Errorf("unmarshal metadata update payload: %w", err)
 	}
 
-	if err := h.collaborationService.ApplyMetadataUpdate(ctx, client.ProjectID(), payload.Delta); err != nil {
+	if err := h.collaborationService.ApplyMetadataUpdate(ctx, client.ProjectID(), req.Delta); err != nil {
 		return fmt.Errorf("apply metadata update: %w", err)
 	}
 
-	broadcastPayload := metadataUpdatePayload{
+	broadcastPayload := metadataBroadcastPayload{
 		SenderID: client.UserID(),
-		Delta:    payload.Delta,
+		Delta:    req.Delta,
 	}
 
 	msg, err := NewMessage(domainCollab.MsgMetadataUpdate, broadcastPayload)
