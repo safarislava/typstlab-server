@@ -59,7 +59,7 @@ func run() error {
 	stopped := make(chan struct{})
 	go func() {
 		<-ctx.Done()
-		shutdown(server)
+		shutdown(server, container)
 		close(stopped)
 	}()
 
@@ -73,11 +73,15 @@ func run() error {
 	return nil
 }
 
-func shutdown(server *http.Server) {
+func shutdown(server *http.Server, container *di.Container) {
 	slog.Info("Shutting down server gracefully...")
 
 	ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancel()
+
+	if container != nil && container.Hub() != nil {
+		container.Hub().Shutdown(ctx)
+	}
 
 	if err := server.Shutdown(ctx); err != nil {
 		slog.Error("Server shutdown failed", slog.Any("error", err))

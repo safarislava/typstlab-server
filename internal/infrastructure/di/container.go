@@ -202,8 +202,11 @@ func (c *Container) Config() *config.Config {
 	return c.cfg
 }
 
-// Close closes any long-lived resources such as the database pool.
+// Close closes any long-lived resources such as the database pool and websocket hub.
 func (c *Container) Close() {
+	if c.wsHub != nil {
+		c.wsHub.Shutdown(context.Background())
+	}
 	if c.pool != nil {
 		c.pool.Close()
 	}
