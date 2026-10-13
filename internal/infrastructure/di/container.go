@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	appAuth "github.com/safarislava/typstlab-server/internal/application/auth"
+	collaborationApp "github.com/safarislava/typstlab-server/internal/application/collaboration"
 	entryApp "github.com/safarislava/typstlab-server/internal/application/entry"
 	fileApp "github.com/safarislava/typstlab-server/internal/application/file"
 	binaryFile "github.com/safarislava/typstlab-server/internal/application/file/binary"
@@ -31,12 +32,12 @@ import (
 	fileHttp "github.com/safarislava/typstlab-server/internal/infrastructure/http/file"
 	middlewareHttp "github.com/safarislava/typstlab-server/internal/infrastructure/http/middleware"
 	projectHttp "github.com/safarislava/typstlab-server/internal/infrastructure/http/project"
-	syncHttp "github.com/safarislava/typstlab-server/internal/infrastructure/http/sync"
 	userHttp "github.com/safarislava/typstlab-server/internal/infrastructure/http/user"
 	"github.com/safarislava/typstlab-server/internal/infrastructure/persistence/composite"
 	"github.com/safarislava/typstlab-server/internal/infrastructure/persistence/memory"
 	"github.com/safarislava/typstlab-server/internal/infrastructure/persistence/postgres"
 	"github.com/safarislava/typstlab-server/internal/infrastructure/persistence/s3"
+	"github.com/safarislava/typstlab-server/internal/infrastructure/websocket"
 )
 
 const headerContentType = "Content-Type"
@@ -107,6 +108,12 @@ type Container struct {
 	yjsMerger     *crdt.YjsMerger
 	yjsMergerOnce sync.Once
 
+	wsUpgrader     *websocket.Upgrader
+	wsUpgraderOnce sync.Once
+
+	wsHub     *websocket.Hub
+	wsHubOnce sync.Once
+
 	// Application Services
 	entryService     *entryApp.Service
 	entryServiceOnce sync.Once
@@ -135,6 +142,9 @@ type Container struct {
 	syncService     *syncApp.Service
 	syncServiceOnce sync.Once
 
+	collaborationService     *collaborationApp.Service
+	collaborationServiceOnce sync.Once
+
 	userService     *userApp.Service
 	userServiceOnce sync.Once
 
@@ -151,8 +161,8 @@ type Container struct {
 	fileHandler     *fileHttp.Handler
 	fileHandlerOnce sync.Once
 
-	syncHandler     *syncHttp.Handler
-	syncHandlerOnce sync.Once
+	wsHandler     *websocket.Handler
+	wsHandlerOnce sync.Once
 
 	userHandler     *userHttp.Handler
 	userHandlerOnce sync.Once
@@ -187,8 +197,11 @@ func (c *Container) Config() *config.Config {
 	return c.cfg
 }
 
-// Close closes any long-lived resources such as the database pool.
+// Close closes any long-lived resources such as the database pool and websocket hub.
 func (c *Container) Close() {
+	if c.wsHub != nil {
+		c.wsHub.Shutdown(context.Background())
+	}
 	if c.pool != nil {
 		c.pool.Close()
 	}
@@ -462,18 +475,9 @@ func (c *Container) FileHandler() *fileHttp.Handler {
 			c.TypstFileService(),
 			c.BinaryFileService(),
 			c.FileService(),
-			c.SyncService(),
 		)
 	})
 	return c.fileHandler
-}
-
-// SyncHandler lazily initializes and returns the sync HTTP handler.
-func (c *Container) SyncHandler() *syncHttp.Handler {
-	c.syncHandlerOnce.Do(func() {
-		c.syncHandler = syncHttp.NewHandler(c.SyncService())
-	})
-	return c.syncHandler
 }
 
 // UserHandler lazily initializes and returns the user HTTP handler.
@@ -512,6 +516,43 @@ func (c *Container) AccessMiddleware() *middlewareHttp.AccessMiddleware {
 	return c.accessMiddleware
 }
 
+// WSUpgrader lazily initializes and returns the WebSocket upgrader.
+func (c *Container) WSUpgrader() *websocket.Upgrader {
+	c.wsUpgraderOnce.Do(func() {
+		c.wsUpgrader = websocket.NewUpgrader(c.cfg.AllowedOrigins)
+	})
+	return c.wsUpgrader
+}
+
+// Hub lazily initializes and returns the WebSocket hub registry.
+func (c *Container) Hub() *websocket.Hub {
+	c.wsHubOnce.Do(func() {
+		c.wsHub = websocket.NewHub()
+	})
+	return c.wsHub
+}
+
+// CollaborationService lazily initializes and returns the collaboration application service.
+func (c *Container) CollaborationService() *collaborationApp.Service {
+	c.collaborationServiceOnce.Do(func() {
+		c.collaborationService = collaborationApp.NewService(c.SyncService())
+	})
+	return c.collaborationService
+}
+
+// WSHandler lazily initializes and returns the WebSocket handler.
+func (c *Container) WSHandler() *websocket.Handler {
+	c.wsHandlerOnce.Do(func() {
+		c.wsHandler = websocket.NewHandler(
+			c.WSUpgrader(),
+			c.Hub(),
+			c.UserService(),
+			c.CollaborationService(),
+		)
+	})
+	return c.wsHandler
+}
+
 // Router lazily initializes the Chi router with middlewares and registered routes.
 func (c *Container) Router() *chi.Mux {
 	c.routerOnce.Do(func() {
@@ -538,7 +579,7 @@ func (c *Container) registerRoutes(r *chi.Mux) {
 	authHandler := c.AuthHandler()
 	projectHandler := c.ProjectHandler()
 	fileHandler := c.FileHandler()
-	syncHandler := c.SyncHandler()
+	wsHandler := c.WSHandler()
 	authMiddleware := c.AuthMiddleware()
 	accessMiddleware := c.AccessMiddleware()
 
@@ -547,6 +588,15 @@ func (c *Container) registerRoutes(r *chi.Mux) {
 	r.Post("/login", authHandler.Login)
 	r.Post("/refresh", authHandler.Refresh)
 	r.Post("/logout", authHandler.Logout)
+
+	// WebSocket gateway route
+	r.Route("/ws/projects/{projectID}", func(r chi.Router) {
+		r.Use(middlewareHttp.RequireWebSocket)
+		r.Use(authMiddleware.Authenticate)
+		r.Use(middlewareHttp.RequireAuthenticated)
+		r.Use(accessMiddleware.ProjectAccess)
+		r.Get("/", wsHandler.ServeWS)
+	})
 
 	// Protected routes
 	r.Group(func(r chi.Router) {
@@ -562,14 +612,12 @@ func (c *Container) registerRoutes(r *chi.Mux) {
 			r.Post("/files", fileHandler.UploadFile)
 			r.Get("/files", fileHandler.ListProjectFiles)
 			r.With(accessMiddleware.FileAccess).Delete("/files/{fileID}", fileHandler.DeleteFile)
-			r.Post("/sync", syncHandler.Sync)
 		})
 
 		r.Route("/files", func(r chi.Router) {
 			r.Route("/typst/{fileID}", func(r chi.Router) {
 				r.Use(accessMiddleware.FileAccess)
 				r.Get("/", fileHandler.GetTypstFile)
-				r.Post("/changes", fileHandler.ApplyFileChanges)
 			})
 			r.Route("/binary/{fileID}", func(r chi.Router) {
 				r.Use(accessMiddleware.FileAccess)

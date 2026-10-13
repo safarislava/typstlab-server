@@ -15,7 +15,6 @@ import (
 
 	binaryApp "github.com/safarislava/typstlab-server/internal/application/file/binary"
 	typstApp "github.com/safarislava/typstlab-server/internal/application/file/typst"
-	syncApp "github.com/safarislava/typstlab-server/internal/application/sync"
 	domainFile "github.com/safarislava/typstlab-server/internal/domain/file"
 	domainProject "github.com/safarislava/typstlab-server/internal/domain/project"
 	"github.com/safarislava/typstlab-server/internal/infrastructure/http/middleware"
@@ -94,17 +93,6 @@ func (m *mockFileService) DeleteFile(ctx context.Context, fileID uuid.UUID) erro
 	return nil
 }
 
-type mockChangeApplier struct {
-	applyFileChangesFunc func(ctx context.Context, req syncApp.ApplyFileChangesRequest) (*domainFile.TypstFile, error)
-}
-
-func (m *mockChangeApplier) ApplyFileChanges(ctx context.Context, req syncApp.ApplyFileChangesRequest) (*domainFile.TypstFile, error) {
-	if m.applyFileChangesFunc != nil {
-		return m.applyFileChangesFunc(ctx, req)
-	}
-	return nil, nil
-}
-
 func TestFileHandler_UploadTypstFile(t *testing.T) {
 	t.Parallel()
 
@@ -124,7 +112,7 @@ func TestFileHandler_UploadTypstFile(t *testing.T) {
 		},
 	}
 
-	handler := NewHandler(mockTypst, &mockBinaryService{}, &mockFileService{}, &mockChangeApplier{})
+	handler := NewHandler(mockTypst, &mockBinaryService{}, &mockFileService{})
 	ctx := testContext(userID, p, nil)
 
 	reqBody, _ := json.Marshal(jsonUploadFileRequest{
@@ -159,7 +147,7 @@ func TestFileHandler_UploadTypstFile_WithContent(t *testing.T) {
 		},
 	}
 
-	handler := NewHandler(mockTypst, &mockBinaryService{}, &mockFileService{}, &mockChangeApplier{})
+	handler := NewHandler(mockTypst, &mockBinaryService{}, &mockFileService{})
 	ctx := testContext(userID, p, nil)
 
 	reqBody, _ := json.Marshal(jsonUploadFileRequest{
@@ -193,7 +181,7 @@ func TestFileHandler_UploadBinaryFile_Multipart(t *testing.T) {
 		},
 	}
 
-	handler := NewHandler(&mockTypstService{}, mockBinary, &mockFileService{}, &mockChangeApplier{})
+	handler := NewHandler(&mockTypstService{}, mockBinary, &mockFileService{})
 	ctx := testContext(userID, p, nil)
 
 	body := &bytes.Buffer{}
@@ -226,7 +214,7 @@ func TestFileHandler_ListProjectFiles(t *testing.T) {
 		},
 	}
 
-	handler := NewHandler(&mockTypstService{}, &mockBinaryService{}, mockFile, &mockChangeApplier{})
+	handler := NewHandler(&mockTypstService{}, &mockBinaryService{}, mockFile)
 	ctx := testContext(userID, p, nil)
 
 	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/projects/"+projectID.String()+"/files", nil)
@@ -255,7 +243,7 @@ func TestFileHandler_GetTypstFile(t *testing.T) {
 
 	tf, _ := domainFile.NewTypstFile(fileID, projectID, docTyp, []byte("state"), time.Now())
 
-	handler := NewHandler(&mockTypstService{}, &mockBinaryService{}, &mockFileService{}, &mockChangeApplier{})
+	handler := NewHandler(&mockTypstService{}, &mockBinaryService{}, &mockFileService{})
 	ctx := testContext(userID, nil, tf)
 
 	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/files/typst/"+fileID.String(), nil)
@@ -284,7 +272,7 @@ func TestFileHandler_GetBinaryFileRaw(t *testing.T) {
 
 	bf, _ := domainFile.NewBinaryFile(fileID, projectID, "image.png", []byte{4, 5, 6}, time.Now())
 
-	handler := NewHandler(&mockTypstService{}, &mockBinaryService{}, &mockFileService{}, &mockChangeApplier{})
+	handler := NewHandler(&mockTypstService{}, &mockBinaryService{}, &mockFileService{})
 	ctx := testContext(userID, nil, bf)
 
 	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/files/binary/"+fileID.String()+"/raw", nil)
@@ -298,46 +286,6 @@ func TestFileHandler_GetBinaryFileRaw(t *testing.T) {
 
 	if !bytes.Equal(rr.Body.Bytes(), []byte{4, 5, 6}) {
 		t.Errorf("Expected body [4 5 6], got %v", rr.Body.Bytes())
-	}
-}
-
-func TestFileHandler_ApplyFileChanges(t *testing.T) {
-	t.Parallel()
-
-	userID := uuid.New()
-	projectID := uuid.New()
-	fileID := uuid.New()
-
-	tf, _ := domainFile.NewTypstFile(fileID, projectID, docTyp, []byte("old-state"), time.Now())
-	updatedTf, _ := domainFile.NewTypstFile(fileID, projectID, docTyp, []byte("updated-state"), time.Now())
-
-	mockChange := &mockChangeApplier{
-		applyFileChangesFunc: func(ctx context.Context, req syncApp.ApplyFileChangesRequest) (*domainFile.TypstFile, error) {
-			if req.FileID == fileID && string(req.Delta) == "changes" {
-				return updatedTf, nil
-			}
-			return nil, nil
-		},
-	}
-
-	handler := NewHandler(&mockTypstService{}, &mockBinaryService{}, &mockFileService{}, mockChange)
-	ctx := testContext(userID, nil, tf)
-
-	reqBody, _ := json.Marshal(jsonApplyFileChangesRequest{Delta: []byte("changes")})
-	req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/files/typst/"+fileID.String()+"/changes", bytes.NewBuffer(reqBody))
-	rr := httptest.NewRecorder()
-
-	handler.ApplyFileChanges(rr, req)
-
-	if rr.Code != http.StatusOK {
-		t.Errorf("Expected status code %d, got %d, body: %s", http.StatusOK, rr.Code, rr.Body.String())
-	}
-
-	var resp JSONTypstFileResponse
-	_ = json.NewDecoder(rr.Body).Decode(&resp)
-
-	if string(resp.State) != "updated-state" {
-		t.Errorf("Expected updated-state, got %q", resp.State)
 	}
 }
 
@@ -361,7 +309,7 @@ func TestFileHandler_DeleteFile(t *testing.T) {
 		},
 	}
 
-	handler := NewHandler(&mockTypstService{}, &mockBinaryService{}, mockFile, &mockChangeApplier{})
+	handler := NewHandler(&mockTypstService{}, &mockBinaryService{}, mockFile)
 	ctx := testContext(userID, p, tf)
 
 	req := httptest.NewRequestWithContext(ctx, http.MethodDelete, "/projects/"+projectID.String()+"/files/"+fileID.String(), nil)
@@ -387,7 +335,7 @@ func TestFileHandler_GetBinaryFile(t *testing.T) {
 
 	bf, _ := domainFile.NewBinaryFile(fileID, projectID, "image.png", []byte{1, 2, 3}, time.Now())
 
-	handler := NewHandler(&mockTypstService{}, &mockBinaryService{}, &mockFileService{}, &mockChangeApplier{})
+	handler := NewHandler(&mockTypstService{}, &mockBinaryService{}, &mockFileService{})
 	ctx := testContext(userID, nil, bf)
 
 	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/files/binary/"+fileID.String(), nil)
@@ -414,7 +362,7 @@ func TestFileHandler_GetTypstFile_Errors(t *testing.T) {
 	projectID := uuid.New()
 	fileID := uuid.New()
 
-	handler := NewHandler(&mockTypstService{}, &mockBinaryService{}, &mockFileService{}, &mockChangeApplier{})
+	handler := NewHandler(&mockTypstService{}, &mockBinaryService{}, &mockFileService{})
 
 	// Case 1: Missing file context
 	req1 := httptest.NewRequestWithContext(testContext(userID, nil, nil), http.MethodGet, "/files/typst/"+fileID.String(), nil)
@@ -441,7 +389,7 @@ func TestFileHandler_GetBinaryFile_Errors(t *testing.T) {
 	projectID := uuid.New()
 	fileID := uuid.New()
 
-	handler := NewHandler(&mockTypstService{}, &mockBinaryService{}, &mockFileService{}, &mockChangeApplier{})
+	handler := NewHandler(&mockTypstService{}, &mockBinaryService{}, &mockFileService{})
 
 	// Case 1: Missing file context
 	req1 := httptest.NewRequestWithContext(testContext(userID, nil, nil), http.MethodGet, "/files/binary/"+fileID.String(), nil)
@@ -468,7 +416,7 @@ func TestFileHandler_GetBinaryFileRaw_Errors(t *testing.T) {
 	projectID := uuid.New()
 	fileID := uuid.New()
 
-	handler := NewHandler(&mockTypstService{}, &mockBinaryService{}, &mockFileService{}, &mockChangeApplier{})
+	handler := NewHandler(&mockTypstService{}, &mockBinaryService{}, &mockFileService{})
 
 	// Case 1: Missing file context
 	req1 := httptest.NewRequestWithContext(testContext(userID, nil, nil), http.MethodGet, "/files/binary/"+fileID.String()+"/raw", nil)
@@ -488,56 +436,6 @@ func TestFileHandler_GetBinaryFileRaw_Errors(t *testing.T) {
 	}
 }
 
-func TestFileHandler_ApplyFileChanges_Errors(t *testing.T) {
-	t.Parallel()
-
-	userID := uuid.New()
-	projectID := uuid.New()
-	fileID := uuid.New()
-
-	mockChange := &mockChangeApplier{
-		applyFileChangesFunc: func(ctx context.Context, req syncApp.ApplyFileChangesRequest) (*domainFile.TypstFile, error) {
-			return nil, errors.New("apply error")
-		},
-	}
-	handler := NewHandler(&mockTypstService{}, &mockBinaryService{}, &mockFileService{}, mockChange)
-
-	// Case 1: Missing file context
-	req1 := httptest.NewRequestWithContext(testContext(userID, nil, nil), http.MethodPost, "/files/typst/"+fileID.String()+"/changes", bytes.NewBufferString("{}"))
-	rr1 := httptest.NewRecorder()
-	handler.ApplyFileChanges(rr1, req1)
-	if rr1.Code != http.StatusInternalServerError {
-		t.Errorf("Expected status 500, got %d", rr1.Code)
-	}
-
-	// Case 2: Not a Typst file
-	bf, _ := domainFile.NewBinaryFile(fileID, projectID, "img.png", []byte{1}, time.Now())
-	req2 := httptest.NewRequestWithContext(testContext(userID, nil, bf), http.MethodPost, "/files/typst/"+fileID.String()+"/changes", bytes.NewBufferString("{}"))
-	rr2 := httptest.NewRecorder()
-	handler.ApplyFileChanges(rr2, req2)
-	if rr2.Code != http.StatusBadRequest {
-		t.Errorf("Expected status 400, got %d", rr2.Code)
-	}
-
-	// Case 3: Invalid body JSON
-	tf, _ := domainFile.NewTypstFile(fileID, projectID, docTyp, nil, time.Now())
-	req3 := httptest.NewRequestWithContext(testContext(userID, nil, tf), http.MethodPost, "/files/typst/"+fileID.String()+"/changes", bytes.NewBufferString("invalid json"))
-	rr3 := httptest.NewRecorder()
-	handler.ApplyFileChanges(rr3, req3)
-	if rr3.Code != http.StatusBadRequest {
-		t.Errorf("Expected status 400, got %d", rr3.Code)
-	}
-
-	// Case 4: Service error
-	reqBody, _ := json.Marshal(jsonApplyFileChangesRequest{Delta: []byte("delta")})
-	req4 := httptest.NewRequestWithContext(testContext(userID, nil, tf), http.MethodPost, "/files/typst/"+fileID.String()+"/changes", bytes.NewBuffer(reqBody))
-	rr4 := httptest.NewRecorder()
-	handler.ApplyFileChanges(rr4, req4)
-	if rr4.Code != http.StatusInternalServerError {
-		t.Errorf("Expected status 500, got %d", rr4.Code)
-	}
-}
-
 func TestFileHandler_DeleteFile_Errors(t *testing.T) {
 	t.Parallel()
 
@@ -554,7 +452,7 @@ func TestFileHandler_DeleteFile_Errors(t *testing.T) {
 			return errors.New("delete error")
 		},
 	}
-	handler := NewHandler(&mockTypstService{}, &mockBinaryService{}, mockFile, &mockChangeApplier{})
+	handler := NewHandler(&mockTypstService{}, &mockBinaryService{}, mockFile)
 
 	// Case 1: Missing context
 	req1 := httptest.NewRequestWithContext(testContext(userID, nil, nil), http.MethodDelete, "/projects/"+projectID.String()+"/files/"+fileID.String(), nil)
@@ -589,7 +487,7 @@ func TestFileHandler_UploadFile_RequestErrors(t *testing.T) {
 	projectID := uuid.New()
 	p, _ := domainProject.NewProject(projectID, []uuid.UUID{userID}, "Project", time.Now())
 
-	handler := NewHandler(&mockTypstService{}, &mockBinaryService{}, &mockFileService{}, &mockChangeApplier{})
+	handler := NewHandler(&mockTypstService{}, &mockBinaryService{}, &mockFileService{})
 
 	// Case 1: Missing project context
 	req1 := httptest.NewRequestWithContext(testContext(userID, nil, nil), http.MethodPost, "/projects/"+projectID.String()+"/files", bytes.NewBufferString("{}"))
@@ -648,7 +546,7 @@ func TestFileHandler_UploadFile_ServiceErrors(t *testing.T) {
 			return nil, errors.New("upload binary error")
 		},
 	}
-	handler := NewHandler(mockTypst, mockBinary, &mockFileService{}, &mockChangeApplier{})
+	handler := NewHandler(mockTypst, mockBinary, &mockFileService{})
 
 	// Case 1: Upload typst service error
 	reqBody, _ := json.Marshal(jsonUploadFileRequest{

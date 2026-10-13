@@ -78,7 +78,7 @@ func TestContainer_InitialStateIsNil(t *testing.T) {
 
 	assertNil(t, "projectHandler", c.projectHandler)
 	assertNil(t, "fileHandler", c.fileHandler)
-	assertNil(t, "syncHandler", c.syncHandler)
+	assertNil(t, "wsHandler", c.wsHandler)
 	assertNil(t, "userHandler", c.userHandler)
 	assertNil(t, "authHandler", c.authHandler)
 	assertNil(t, "authMiddleware", c.authMiddleware)
@@ -131,6 +131,8 @@ func TestContainer_Infrastructure(t *testing.T) {
 	assertSingleton(t, "Hasher", c.Hasher(), c.Hasher())
 	assertSingleton(t, "TokenService", c.TokenService(), c.TokenService())
 	assertSingleton(t, "YjsMerger", c.YjsMerger(), c.YjsMerger())
+	assertSingleton(t, "WSUpgrader", c.WSUpgrader(), c.WSUpgrader())
+	assertSingleton(t, "Hub", c.Hub(), c.Hub())
 }
 
 func TestContainer_Services(t *testing.T) {
@@ -147,6 +149,7 @@ func TestContainer_Services(t *testing.T) {
 	assertSingleton(t, "SyncMetadataService", c.SyncMetadataService(), c.SyncMetadataService())
 	assertSingleton(t, "SyncFileService", c.SyncFileService(), c.SyncFileService())
 	assertSingleton(t, "SyncService", c.SyncService(), c.SyncService())
+	assertSingleton(t, "CollaborationService", c.CollaborationService(), c.CollaborationService())
 	assertSingleton(t, "UserService", c.UserService(), c.UserService())
 	assertSingleton(t, "SessionService", c.SessionService(), c.SessionService())
 	assertSingleton(t, "AuthService", c.AuthService(), c.AuthService())
@@ -159,7 +162,7 @@ func TestContainer_HandlersAndMiddlewares(t *testing.T) {
 
 	assertSingleton(t, "ProjectHandler", c.ProjectHandler(), c.ProjectHandler())
 	assertSingleton(t, "FileHandler", c.FileHandler(), c.FileHandler())
-	assertSingleton(t, "SyncHandler", c.SyncHandler(), c.SyncHandler())
+	assertSingleton(t, "WSHandler", c.WSHandler(), c.WSHandler())
 	assertSingleton(t, "UserHandler", c.UserHandler(), c.UserHandler())
 	assertSingleton(t, "AuthHandler", c.AuthHandler(), c.AuthHandler())
 	assertSingleton(t, "AuthMiddleware", c.AuthMiddleware(), c.AuthMiddleware())
@@ -238,5 +241,21 @@ func TestContainer_RouterAuthAndProjectFlow(t *testing.T) {
 
 	if projRr.Code != http.StatusCreated {
 		t.Errorf("Create project failed: status %d, body %s", projRr.Code, projRr.Body.String())
+	}
+}
+
+func TestContainer_RouterWSRejection(t *testing.T) {
+	t.Parallel()
+
+	c := New(newTestConfig(), WithMemoryRepositories())
+	router := c.Router()
+
+	projID := uuid.New().String()
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/ws/projects/"+projID, http.NoBody)
+	rr := httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusUpgradeRequired {
+		t.Errorf("Expected status %d (Upgrade Required), got %d", http.StatusUpgradeRequired, rr.Code)
 	}
 }
