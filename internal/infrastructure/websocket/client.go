@@ -17,13 +17,21 @@ const (
 	pingInterval   = 25 * time.Second
 )
 
+// Connection abstracts the underlying WebSocket transport (e.g. *websocket.Conn).
+type Connection interface {
+	Read(ctx context.Context) (websocket.MessageType, []byte, error)
+	Write(ctx context.Context, typ websocket.MessageType, p []byte) error
+	Ping(ctx context.Context) error
+	Close(code websocket.StatusCode, reason string) error
+}
+
 // Client represents an active WebSocket connection attached to a specific collaborator and room.
 type Client struct {
 	id        uuid.UUID
 	userID    uuid.UUID
 	userEmail string
 	projectID uuid.UUID
-	conn      *websocket.Conn
+	conn      Connection
 	room      *Room
 	sendChan  chan []byte
 	ctx       context.Context
@@ -36,7 +44,7 @@ func NewClient(
 	userID uuid.UUID,
 	userEmail string,
 	projectID uuid.UUID,
-	conn *websocket.Conn,
+	conn Connection,
 	room *Room,
 ) *Client {
 	ctx, cancel := context.WithCancel(context.Background())
@@ -51,6 +59,11 @@ func NewClient(
 		ctx:       ctx,
 		cancel:    cancel,
 	}
+}
+
+// OutgoingMessages returns the read-only channel of queued outgoing messages.
+func (c *Client) OutgoingMessages() <-chan []byte {
+	return c.sendChan
 }
 
 // ID returns the unique connection ID of this client.
@@ -111,40 +124,24 @@ func (c *Client) Close(status websocket.StatusCode, reason string) {
 
 // ReadMessage reads the next message from the WebSocket connection in a direct, blocking call.
 func (c *Client) ReadMessage() (Message, error) {
-	for {
-		_, data, err := c.conn.Read(c.ctx)
-		if err != nil {
-			return Message{}, fmt.Errorf("read websocket message: %w", err)
-		}
-
-		var msg Message
-		if unmarshalErr := json.Unmarshal(data, &msg); unmarshalErr != nil {
-			continue
-		}
-
-		if msg.Type == MsgPing {
-			c.replyPong()
-			continue
-		}
-
-		return msg, nil
+	_, data, err := c.conn.Read(c.ctx)
+	if err != nil {
+		return Message{}, fmt.Errorf("read websocket message: %w", err)
 	}
-}
 
-func (c *Client) replyPong() {
-	pongMsg, err := NewMessage(MsgPong, nil)
-	if err == nil {
-		_ = c.Send(pongMsg)
+	var msg Message
+	if err := json.Unmarshal(data, &msg); err != nil {
+		return Message{}, fmt.Errorf("unmarshal websocket message: %w", err)
 	}
+
+	return msg, nil
 }
 
 // WritePump writes queued messages and periodic ping frames to the WebSocket connection.
 func (c *Client) WritePump() {
 	ticker := time.NewTicker(pingInterval)
-	defer func() {
-		ticker.Stop()
-		c.Close(websocket.StatusNormalClosure, "write pump finished")
-	}()
+	defer ticker.Stop()
+	defer c.Close(websocket.StatusNormalClosure, "write pump finished")
 
 	for {
 		select {
