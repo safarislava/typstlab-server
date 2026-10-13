@@ -19,7 +19,6 @@ type SyncService interface {
 
 // SyncInitRequest represents the application input for project sync initialization.
 type SyncInitRequest struct {
-	MetadataDelta       []byte
 	MetadataStateVector []byte
 	ContentVectors      map[uuid.UUID][]byte
 }
@@ -52,7 +51,6 @@ func NewService(syncService SyncService) *Service {
 // SyncInit coordinates initial project metadata sync and file content instruction generation.
 func (s *Service) SyncInit(ctx context.Context, projectID uuid.UUID, req SyncInitRequest) (*SyncInitResponse, error) {
 	appReq := &syncApp.Request{
-		MetadataDelta:       req.MetadataDelta,
 		MetadataStateVector: req.MetadataStateVector,
 		ContentVectors:      req.ContentVectors,
 	}

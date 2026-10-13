@@ -152,7 +152,7 @@ sequenceDiagram
 
 | Тип (`type`) | Направление | Описание |
 |:---|:---:|:---|
-| `sync_init` | Client -> Server | Запрос начальной синхронизации: клиент передает `metadata_delta`, `metadata_state_vector` и `content_vectors` (`fileID -> state_vector`). |
+| `sync_init` | Client -> Server | Запрос начальной синхронизации: клиент передает вектор состояния метаданных `metadata_state_vector` и векторы файлов `content_vectors` (`fileID -> state_vector`). |
 | `sync_response` | Server -> Client | Ответ начальной синхронизации: сервер возвращает серверную `metadata_delta` и инструкции с дельтами документов (`instructions`). |
 | `crdt_update` | Двустороннее | Передача дельты текста Typst-файла (`file_id`, `delta`). Сервер сохраняет дельту и рассылает соавторам с указанием `sender_id`. |
 | `metadata_update` | Двустороннее | Передача дельты дерева файлов (`delta`). Сервер объединяет метаданные и рассылает соавторам с `sender_id`. |

@@ -149,7 +149,6 @@ func (h *Handler) handlePong(_ context.Context, _ *websocket.Client, _ json.RawM
 }
 
 type syncInitPayload struct {
-	MetadataDelta       []byte               `json:"metadata_delta"`
 	MetadataStateVector []byte               `json:"metadata_state_vector"`
 	ContentVectors      map[uuid.UUID][]byte `json:"content_vectors"`
 }
@@ -172,7 +171,6 @@ func (h *Handler) handleSyncInit(ctx context.Context, client *websocket.Client, 
 	}
 
 	appReq := collabApp.SyncInitRequest{
-		MetadataDelta:       payload.MetadataDelta,
 		MetadataStateVector: payload.MetadataStateVector,
 		ContentVectors:      payload.ContentVectors,
 	}

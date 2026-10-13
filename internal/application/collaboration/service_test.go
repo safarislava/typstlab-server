@@ -43,8 +43,8 @@ func TestService_SyncInit(t *testing.T) {
 	fileID := uuid.New()
 	mockSync := &mockSyncService{
 		syncFunc: func(_ context.Context, _ uuid.UUID, req *syncApp.Request) (*syncApp.Response, error) {
-			if string(req.MetadataDelta) != "meta-delta" {
-				t.Errorf("unexpected metadata delta: %s", string(req.MetadataDelta))
+			if string(req.MetadataStateVector) != "state-vector" {
+				t.Errorf("unexpected metadata state vector: %s", string(req.MetadataStateVector))
 			}
 			return &syncApp.Response{
 				MetadataDelta: []byte("server-delta"),
@@ -63,7 +63,6 @@ func TestService_SyncInit(t *testing.T) {
 	projectID := uuid.New()
 
 	req := SyncInitRequest{
-		MetadataDelta:       []byte("meta-delta"),
 		MetadataStateVector: []byte("state-vector"),
 		ContentVectors:      map[uuid.UUID][]byte{fileID: []byte("vector")},
 	}
