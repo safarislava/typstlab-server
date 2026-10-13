@@ -48,9 +48,9 @@ The backend is designed to be lightweight, high-performance, and secure, focusin
   - [x] **S3 / MinIO Storage**: S3-compatible object storage client with composite persistence layer for binary files.
   - [x] **TLD Document Format**: Blockless, pure Yjs binary CRDT document representation.
 
-- [ ] **Phase 2: Real-time Collaboration (WebSockets)**
-  - [ ] **WebSocket Gateway**: Implement persistent WebSocket endpoints (`/ws/projects/{projectID}`) for real-time Yjs CRDT delta broadcasting.
-  - [ ] **Presence & Cursors**: Real-time position tracking for user cursors, text selections, and active collaborator status.
+- [x] **Phase 2: Real-time Collaboration (WebSockets)**
+  - [x] **WebSocket Gateway**: Implement persistent WebSocket endpoints (`/ws/projects/{projectID}`) for real-time Yjs CRDT delta broadcasting with mandatory RFC 6455 enforcement (`426 Upgrade Required`).
+  - [x] **Presence & Cursors**: Real-time position tracking for user cursors, text selections, and active collaborator status (Awareness).
 
 - [ ] **Phase 3: Version History & Document Snapshots**
   - [ ] **Document Snapshots**: Automated and manual snapshot creation for document state checkpoints.

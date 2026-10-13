@@ -324,6 +324,89 @@ paths:
         '403':
           description: Forbidden
 
+  /ws/projects/{projectID}:
+    get:
+      summary: Establish real-time collaboration WebSocket connection
+      description: |
+        Upgrades HTTP connection to an RFC 6455 persistent WebSocket session for real-time document synchronization and cursor tracking (Awareness).
+
+        **Mandatory WebSocket:**
+        Requests without valid RFC 6455 WebSocket handshake headers are strictly rejected with HTTP `426 Upgrade Required`.
+
+        **Strict Authentication:**
+        Requires `Authorization: Bearer <token>` in the initial handshake request headers. Authentication via query parameters (`?token=...`) is strictly rejected with `401 Unauthorized`.
+      tags:
+        - Collaboration
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: projectID
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: Upgrade
+          in: header
+          required: true
+          schema:
+            type: string
+            example: websocket
+        - name: Connection
+          in: header
+          required: true
+          schema:
+            type: string
+            example: Upgrade
+        - name: Sec-WebSocket-Version
+          in: header
+          required: true
+          schema:
+            type: string
+            example: "13"
+        - name: Sec-WebSocket-Key
+          in: header
+          required: true
+          schema:
+            type: string
+      responses:
+        '101':
+          description: Switching Protocols - WebSocket connection established successfully
+        '400':
+          description: Invalid project UUID
+        '401':
+          description: Unauthorized - missing or invalid Bearer token
+        '403':
+          description: Forbidden - user is not a collaborator in this project
+        '404':
+          description: Project not found
+        '426':
+          description: Upgrade Required - device does not support RFC 6455 WebSocket
+          headers:
+            Upgrade:
+              schema:
+                type: string
+                example: websocket
+            Connection:
+              schema:
+                type: string
+                example: Upgrade
+            Sec-WebSocket-Version:
+              schema:
+                type: string
+                example: "13"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                    example: Upgrade Required
+                  message:
+                    type: string
+                    example: WebSocket is mandatory for real-time collaboration. This device does not support RFC 6455.
+
   /projects/{projectID}/files/{fileID}:
     delete:
       summary: Delete a file from a project
