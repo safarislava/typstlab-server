@@ -3,6 +3,8 @@ package websocket
 import (
 	"encoding/json"
 	"testing"
+
+	domainCollab "github.com/safarislava/typstlab-server/internal/domain/collaboration"
 )
 
 const (
@@ -12,12 +14,12 @@ const (
 func TestNewMessage_NilPayload(t *testing.T) {
 	t.Parallel()
 
-	msg, err := NewMessage(MsgPing, nil)
+	msg, err := NewMessage(domainCollab.MsgPing, nil)
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
-	if msg.Type != MsgPing {
-		t.Errorf("Expected type %q, got %q", MsgPing, msg.Type)
+	if msg.Type != domainCollab.MsgPing {
+		t.Errorf("Expected type %q, got %q", domainCollab.MsgPing, msg.Type)
 	}
 	if string(msg.Payload) != "null" {
 		t.Errorf("Expected payload 'null', got %s", msg.Payload)
@@ -32,12 +34,12 @@ func TestNewMessage_WithPayload(t *testing.T) {
 	}
 
 	payload := samplePayload{Text: testHello}
-	msg, err := NewMessage(MsgCRDTUpdate, payload)
+	msg, err := NewMessage(domainCollab.MsgCRDTUpdate, payload)
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}
-	if msg.Type != MsgCRDTUpdate {
-		t.Errorf("Expected type %q, got %q", MsgCRDTUpdate, msg.Type)
+	if msg.Type != domainCollab.MsgCRDTUpdate {
+		t.Errorf("Expected type %q, got %q", domainCollab.MsgCRDTUpdate, msg.Type)
 	}
 
 	var decoded samplePayload
@@ -54,7 +56,7 @@ func TestNewMessage_InvalidPayload(t *testing.T) {
 
 	// Channel cannot be JSON-marshaled
 	ch := make(chan int)
-	_, err := NewMessage(MsgError, ch)
+	_, err := NewMessage(domainCollab.MsgError, ch)
 	if err == nil {
 		t.Fatal("Expected error for non-serializable payload")
 	}

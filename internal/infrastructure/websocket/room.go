@@ -3,8 +3,10 @@ package websocket
 import (
 	"sync"
 
-	"github.com/coder/websocket"
+	coderws "github.com/coder/websocket"
 	"github.com/google/uuid"
+
+	domainCollab "github.com/safarislava/typstlab-server/internal/domain/collaboration"
 )
 
 // Room manages active WebSocket connections and presence state for a single project.
@@ -41,7 +43,7 @@ func (r *Room) Join(client *Client) {
 	snapshot := r.awareness.Snapshot()
 	r.mu.Unlock()
 
-	snapshotMsg, err := NewMessage(MsgAwarenessSnapshot, map[string]any{
+	snapshotMsg, err := NewMessage(domainCollab.MsgAwarenessSnapshot, map[string]any{
 		"presences": snapshot,
 	})
 	if err == nil {
@@ -69,7 +71,7 @@ func (r *Room) Leave(client *Client) {
 
 	if !hasOtherConnections {
 		r.awareness.RemovePresence(client.UserID())
-		removeMsg, err := NewMessage(MsgAwarenessRemove, map[string]any{
+		removeMsg, err := NewMessage(domainCollab.MsgAwarenessRemove, map[string]any{
 			"user_id": client.UserID(),
 		})
 		if err == nil {
@@ -109,7 +111,7 @@ func (r *Room) ClientsCount() int {
 }
 
 // Close closes all client connections in the room with the given status code.
-func (r *Room) Close(status websocket.StatusCode, reason string) {
+func (r *Room) Close(status coderws.StatusCode, reason string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 

@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+
+	domainCollab "github.com/safarislava/typstlab-server/internal/domain/collaboration"
 )
 
 func TestHub_GetOrCreateRoom(t *testing.T) {
@@ -61,8 +63,8 @@ func TestHub_RemoveClientAndEmptyRoom(t *testing.T) {
 		if err := json.Unmarshal(data, &msg); err != nil {
 			t.Fatalf("Failed to decode message: %v", err)
 		}
-		if msg.Type != MsgAwarenessSnapshot {
-			t.Errorf("Expected message type %q, got %q", MsgAwarenessSnapshot, msg.Type)
+		if msg.Type != domainCollab.MsgAwarenessSnapshot {
+			t.Errorf("Expected message type %q, got %q", domainCollab.MsgAwarenessSnapshot, msg.Type)
 		}
 	default:
 		t.Error("Expected client to receive awareness snapshot on join")
@@ -96,7 +98,7 @@ func TestRoom_BroadcastAndBroadcastExcept(t *testing.T) {
 	<-client1.sendChan
 	<-client2.sendChan
 
-	testMsg, err := NewMessage(MsgCRDTUpdate, map[string]string{"sample": "data"})
+	testMsg, err := NewMessage(domainCollab.MsgCRDTUpdate, map[string]string{"sample": "data"})
 	if err != nil {
 		t.Fatalf("Failed to create message: %v", err)
 	}
@@ -108,7 +110,7 @@ func TestRoom_BroadcastAndBroadcastExcept(t *testing.T) {
 	case data := <-client2.sendChan:
 		var msg Message
 		_ = json.Unmarshal(data, &msg)
-		if msg.Type != MsgCRDTUpdate {
+		if msg.Type != domainCollab.MsgCRDTUpdate {
 			t.Errorf("Expected MsgCRDTUpdate, got %q", msg.Type)
 		}
 	default:
@@ -165,7 +167,7 @@ func TestClient_AccessorsAndSend(t *testing.T) {
 		t.Error("Expected client ID to not be nil UUID")
 	}
 
-	testMsg, err := NewMessage(MsgCRDTUpdate, map[string]string{"test": "123"})
+	testMsg, err := NewMessage(domainCollab.MsgCRDTUpdate, map[string]string{"test": "123"})
 	if err != nil {
 		t.Fatalf("Failed to create test message: %v", err)
 	}
