@@ -20,7 +20,7 @@ func NewUpgrader(allowedOrigins []string) *Upgrader {
 }
 
 // Upgrade upgrades the HTTP connection to a WebSocket connection.
-func (u *Upgrader) Upgrade(w http.ResponseWriter, r *http.Request) (*websocket.Conn, error) {
+func (u *Upgrader) Upgrade(w http.ResponseWriter, r *http.Request) (Connection, error) {
 	opts := &websocket.AcceptOptions{
 		OriginPatterns: u.allowedOrigins,
 	}
