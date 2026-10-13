@@ -1,4 +1,4 @@
-package ws
+package websocket
 
 import (
 	"context"
@@ -20,7 +20,6 @@ import (
 	domainProject "github.com/safarislava/typstlab-server/internal/domain/project"
 	domainUser "github.com/safarislava/typstlab-server/internal/domain/user"
 	"github.com/safarislava/typstlab-server/internal/infrastructure/http/middleware"
-	"github.com/safarislava/typstlab-server/internal/infrastructure/websocket"
 )
 
 const (
@@ -108,17 +107,17 @@ func (m *mockCollaborationService) ApplyMetadataUpdate(ctx context.Context, proj
 }
 
 type mockUpgrader struct {
-	upgradeFunc func(w http.ResponseWriter, r *http.Request) (websocket.Connection, error)
+	upgradeFunc func(w http.ResponseWriter, r *http.Request) (Connection, error)
 }
 
-func (m *mockUpgrader) Upgrade(w http.ResponseWriter, r *http.Request) (websocket.Connection, error) {
+func (m *mockUpgrader) Upgrade(w http.ResponseWriter, r *http.Request) (Connection, error) {
 	if m.upgradeFunc != nil {
 		return m.upgradeFunc(w, r)
 	}
 	return nil, nil
 }
 
-func pushTestMessage(t *testing.T, conn *mockConnection, msg websocket.Message) {
+func pushTestMessage(t *testing.T, conn *mockConnection, msg Message) {
 	t.Helper()
 	data, err := json.Marshal(msg)
 	if err != nil {
@@ -127,25 +126,25 @@ func pushTestMessage(t *testing.T, conn *mockConnection, msg websocket.Message) 
 	conn.readChan <- data
 }
 
-func readClientMessage(t *testing.T, client *websocket.Client) websocket.Message {
+func readClientMessage(t *testing.T, client *Client) Message {
 	t.Helper()
 	select {
 	case data := <-client.OutgoingMessages():
-		var msg websocket.Message
+		var msg Message
 		if err := json.Unmarshal(data, &msg); err != nil {
 			t.Fatalf("failed to unmarshal message: %v", err)
 		}
 		return msg
 	case <-time.After(100 * time.Millisecond):
 		t.Fatal("timed out waiting for client message")
-		return websocket.Message{}
+		return Message{}
 	}
 }
 
 type testEnv struct {
 	handler *Handler
 	collab  *mockCollaborationService
-	hub     *websocket.Hub
+	hub     *Hub
 	userID  uuid.UUID
 	proj    *domainProject.Project
 	conn    *mockConnection
@@ -163,12 +162,12 @@ func setupTestHandler(t *testing.T) testEnv {
 
 	conn := newMockConnection()
 	mockUp := &mockUpgrader{
-		upgradeFunc: func(_ http.ResponseWriter, _ *http.Request) (websocket.Connection, error) {
+		upgradeFunc: func(_ http.ResponseWriter, _ *http.Request) (Connection, error) {
 			return conn, nil
 		},
 	}
 
-	hub := websocket.NewHub()
+	hub := NewHub()
 	mockCollab := &mockCollaborationService{}
 	handler := NewHandler(mockUp, hub, mockUser, mockCollab)
 	projectID := uuid.New()
@@ -184,7 +183,7 @@ func setupTestHandler(t *testing.T) testEnv {
 	}
 }
 
-func waitForActiveRoom(t *testing.T, hub *websocket.Hub, projectID uuid.UUID) *websocket.Room {
+func waitForActiveRoom(t *testing.T, hub *Hub, projectID uuid.UUID) *Room {
 	t.Helper()
 	for i := 0; i < 20; i++ {
 		r, ok := hub.GetRoom(projectID)
@@ -265,7 +264,7 @@ func TestHandler_ServeWS_UpgradeError(t *testing.T) {
 	}
 
 	mockUp := &mockUpgrader{
-		upgradeFunc: func(_ http.ResponseWriter, _ *http.Request) (websocket.Connection, error) {
+		upgradeFunc: func(_ http.ResponseWriter, _ *http.Request) (Connection, error) {
 			return nil, errors.New("upgrade rejected")
 		},
 	}
@@ -310,16 +309,16 @@ func TestHandler_ServeWS_CollaborationFlow(t *testing.T) {
 	go env.handler.ServeWS(rec, req)
 
 	room := waitForActiveRoom(t, env.hub, env.proj.ID())
-	peerClient := websocket.NewClient(uuid.New(), "peer@test.com", env.proj.ID(), newMockConnection(), room)
+	peerClient := NewClient(uuid.New(), "peer@test.com", env.proj.ID(), newMockConnection(), room)
 	room.Join(peerClient)
 	<-peerClient.OutgoingMessages() // drain snapshot
 
 	// 1. Ping
-	pingMsg, _ := websocket.NewMessage(domainCollab.MsgPing, nil)
+	pingMsg, _ := NewMessage(domainCollab.MsgPing, nil)
 	pushTestMessage(t, env.conn, pingMsg)
 
 	// 2. CRDT Update
-	crdtMsg, _ := websocket.NewMessage(domainCollab.MsgCRDTUpdate, map[string]any{
+	crdtMsg, _ := NewMessage(domainCollab.MsgCRDTUpdate, map[string]any{
 		testKeyFileID: fileID.String(),
 		testKeyDelta:  "Y3JkdC11cGRhdGU=",
 	})
@@ -334,7 +333,7 @@ func TestHandler_ServeWS_CollaborationFlow(t *testing.T) {
 	}
 
 	// 3. Awareness Update
-	awarenessMsg, _ := websocket.NewMessage(domainCollab.MsgAwarenessUpdate, map[string]any{
+	awarenessMsg, _ := NewMessage(domainCollab.MsgAwarenessUpdate, map[string]any{
 		testKeyFileID: fileID.String(),
 		"cursor": map[string]int{
 			"anchor": 5,

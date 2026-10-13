@@ -1,4 +1,4 @@
-package ws
+package websocket
 
 import (
 	"context"
@@ -15,7 +15,6 @@ import (
 	domainCollab "github.com/safarislava/typstlab-server/internal/domain/collaboration"
 	domainUser "github.com/safarislava/typstlab-server/internal/domain/user"
 	"github.com/safarislava/typstlab-server/internal/infrastructure/http/middleware"
-	"github.com/safarislava/typstlab-server/internal/infrastructure/websocket"
 )
 
 // UserService defines the contract for fetching user details.
@@ -30,17 +29,17 @@ type CollaborationService interface {
 	ApplyMetadataUpdate(ctx context.Context, projectID uuid.UUID, delta []byte) error
 }
 
-// Upgrader defines the contract for upgrading HTTP connections to WebSocket.
-type Upgrader interface {
-	Upgrade(w http.ResponseWriter, r *http.Request) (websocket.Connection, error)
+// ConnectionUpgrader defines the contract for upgrading HTTP connections to WebSocket.
+type ConnectionUpgrader interface {
+	Upgrade(w http.ResponseWriter, r *http.Request) (Connection, error)
 }
 
-type messageHandler func(ctx context.Context, client *websocket.Client, rawPayload json.RawMessage) error
+type messageHandler func(ctx context.Context, client *Client, rawPayload json.RawMessage) error
 
 // Handler handles WebSocket connection establishment, message dispatching, and collaboration.
 type Handler struct {
-	upgrader             Upgrader
-	hub                  *websocket.Hub
+	upgrader             ConnectionUpgrader
+	hub                  *Hub
 	userService          UserService
 	collaborationService CollaborationService
 	handlers             map[domainCollab.MessageType]messageHandler
@@ -48,8 +47,8 @@ type Handler struct {
 
 // NewHandler creates a new WebSocket Handler.
 func NewHandler(
-	upgrader Upgrader,
-	hub *websocket.Hub,
+	upgrader ConnectionUpgrader,
+	hub *Hub,
 	userService UserService,
 	collaborationService CollaborationService,
 ) *Handler {
@@ -100,7 +99,7 @@ func (h *Handler) ServeWS(w http.ResponseWriter, r *http.Request) {
 	}
 
 	room := h.hub.GetOrCreateRoom(project.ID())
-	client := websocket.NewClient(user.ID(), user.Email(), project.ID(), conn, room)
+	client := NewClient(user.ID(), user.Email(), project.ID(), conn, room)
 	room.Join(client)
 
 	go client.WritePump()
@@ -113,7 +112,7 @@ func (h *Handler) ServeWS(w http.ResponseWriter, r *http.Request) {
 	h.handleConnection(r.Context(), client)
 }
 
-func (h *Handler) handleConnection(ctx context.Context, client *websocket.Client) {
+func (h *Handler) handleConnection(ctx context.Context, client *Client) {
 	for {
 		msg, err := client.ReadMessage()
 		if err != nil {
@@ -126,7 +125,7 @@ func (h *Handler) handleConnection(ctx context.Context, client *websocket.Client
 	}
 }
 
-func (h *Handler) dispatchMessage(ctx context.Context, client *websocket.Client, msg websocket.Message) error {
+func (h *Handler) dispatchMessage(ctx context.Context, client *Client, msg Message) error {
 	handler, exists := h.handlers[msg.Type]
 	if !exists {
 		return fmt.Errorf("unsupported message type: %s", msg.Type)
@@ -134,8 +133,8 @@ func (h *Handler) dispatchMessage(ctx context.Context, client *websocket.Client,
 	return handler(ctx, client, msg.Payload)
 }
 
-func (h *Handler) handlePing(_ context.Context, client *websocket.Client, _ json.RawMessage) error {
-	pongMsg, err := websocket.NewMessage(domainCollab.MsgPong, nil)
+func (h *Handler) handlePing(_ context.Context, client *Client, _ json.RawMessage) error {
+	pongMsg, err := NewMessage(domainCollab.MsgPong, nil)
 	if err != nil {
 		return fmt.Errorf("create pong message: %w", err)
 	}
@@ -145,7 +144,7 @@ func (h *Handler) handlePing(_ context.Context, client *websocket.Client, _ json
 	return nil
 }
 
-func (h *Handler) handlePong(_ context.Context, _ *websocket.Client, _ json.RawMessage) error {
+func (h *Handler) handlePong(_ context.Context, _ *Client, _ json.RawMessage) error {
 	return nil
 }
 
@@ -165,7 +164,7 @@ type syncResponsePayload struct {
 	Instructions  []syncInstructionPayload `json:"instructions"`
 }
 
-func (h *Handler) handleSyncInit(ctx context.Context, client *websocket.Client, rawPayload json.RawMessage) error {
+func (h *Handler) handleSyncInit(ctx context.Context, client *Client, rawPayload json.RawMessage) error {
 	var payload syncInitPayload
 	if err := json.Unmarshal(rawPayload, &payload); err != nil {
 		return fmt.Errorf("unmarshal sync init payload: %w", err)
@@ -195,7 +194,7 @@ func (h *Handler) handleSyncInit(ctx context.Context, client *websocket.Client, 
 		Instructions:  instructions,
 	}
 
-	msg, err := websocket.NewMessage(domainCollab.MsgSyncResponse, outPayload)
+	msg, err := NewMessage(domainCollab.MsgSyncResponse, outPayload)
 	if err != nil {
 		return fmt.Errorf("create sync response message: %w", err)
 	}
@@ -212,7 +211,7 @@ type crdtUpdatePayload struct {
 	Delta    []byte    `json:"delta"`
 }
 
-func (h *Handler) handleCRDTUpdate(ctx context.Context, client *websocket.Client, rawPayload json.RawMessage) error {
+func (h *Handler) handleCRDTUpdate(ctx context.Context, client *Client, rawPayload json.RawMessage) error {
 	var payload crdtUpdatePayload
 	if err := json.Unmarshal(rawPayload, &payload); err != nil {
 		return fmt.Errorf("unmarshal crdt update payload: %w", err)
@@ -228,7 +227,7 @@ func (h *Handler) handleCRDTUpdate(ctx context.Context, client *websocket.Client
 		Delta:    payload.Delta,
 	}
 
-	msg, err := websocket.NewMessage(domainCollab.MsgCRDTUpdate, broadcastPayload)
+	msg, err := NewMessage(domainCollab.MsgCRDTUpdate, broadcastPayload)
 	if err != nil {
 		return fmt.Errorf("create crdt broadcast message: %w", err)
 	}
@@ -244,7 +243,7 @@ type metadataUpdatePayload struct {
 	Delta    []byte    `json:"delta"`
 }
 
-func (h *Handler) handleMetadataUpdate(ctx context.Context, client *websocket.Client, rawPayload json.RawMessage) error {
+func (h *Handler) handleMetadataUpdate(ctx context.Context, client *Client, rawPayload json.RawMessage) error {
 	var payload metadataUpdatePayload
 	if err := json.Unmarshal(rawPayload, &payload); err != nil {
 		return fmt.Errorf("unmarshal metadata update payload: %w", err)
@@ -259,7 +258,7 @@ func (h *Handler) handleMetadataUpdate(ctx context.Context, client *websocket.Cl
 		Delta:    payload.Delta,
 	}
 
-	msg, err := websocket.NewMessage(domainCollab.MsgMetadataUpdate, broadcastPayload)
+	msg, err := NewMessage(domainCollab.MsgMetadataUpdate, broadcastPayload)
 	if err != nil {
 		return fmt.Errorf("create metadata broadcast message: %w", err)
 	}
@@ -271,13 +270,13 @@ func (h *Handler) handleMetadataUpdate(ctx context.Context, client *websocket.Cl
 }
 
 type awarenessUpdatePayload struct {
-	FileID uuid.UUID        `json:"file_id"`
-	Cursor websocket.Cursor `json:"cursor"`
+	FileID uuid.UUID `json:"file_id"`
+	Cursor Cursor    `json:"cursor"`
 }
 
 func (h *Handler) handleAwarenessUpdate(
 	_ context.Context,
-	client *websocket.Client,
+	client *Client,
 	rawPayload json.RawMessage,
 ) error {
 	var payload awarenessUpdatePayload
@@ -297,7 +296,7 @@ func (h *Handler) handleAwarenessUpdate(
 		payload.Cursor,
 	)
 
-	msg, err := websocket.NewMessage(domainCollab.MsgAwarenessUpdate, presence)
+	msg, err := NewMessage(domainCollab.MsgAwarenessUpdate, presence)
 	if err != nil {
 		return fmt.Errorf("create awareness broadcast message: %w", err)
 	}
@@ -310,8 +309,8 @@ type errorPayload struct {
 	Message string `json:"message"`
 }
 
-func (h *Handler) sendErrorMessage(client *websocket.Client, errMsg string) {
-	msg, err := websocket.NewMessage(domainCollab.MsgError, errorPayload{
+func (h *Handler) sendErrorMessage(client *Client, errMsg string) {
+	msg, err := NewMessage(domainCollab.MsgError, errorPayload{
 		Message: errMsg,
 	})
 	if err == nil {

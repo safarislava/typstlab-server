@@ -34,7 +34,6 @@ import (
 	projectHttp "github.com/safarislava/typstlab-server/internal/infrastructure/http/project"
 	syncHttp "github.com/safarislava/typstlab-server/internal/infrastructure/http/sync"
 	userHttp "github.com/safarislava/typstlab-server/internal/infrastructure/http/user"
-	wsHttp "github.com/safarislava/typstlab-server/internal/infrastructure/http/ws"
 	"github.com/safarislava/typstlab-server/internal/infrastructure/persistence/composite"
 	"github.com/safarislava/typstlab-server/internal/infrastructure/persistence/memory"
 	"github.com/safarislava/typstlab-server/internal/infrastructure/persistence/postgres"
@@ -166,7 +165,7 @@ type Container struct {
 	syncHandler     *syncHttp.Handler
 	syncHandlerOnce sync.Once
 
-	wsHandler     *wsHttp.Handler
+	wsHandler     *websocket.Handler
 	wsHandlerOnce sync.Once
 
 	userHandler     *userHttp.Handler
@@ -554,10 +553,10 @@ func (c *Container) CollaborationService() *collaborationApp.Service {
 	return c.collaborationService
 }
 
-// WSHandler lazily initializes and returns the WebSocket HTTP handler.
-func (c *Container) WSHandler() *wsHttp.Handler {
+// WSHandler lazily initializes and returns the WebSocket handler.
+func (c *Container) WSHandler() *websocket.Handler {
 	c.wsHandlerOnce.Do(func() {
-		c.wsHandler = wsHttp.NewHandler(
+		c.wsHandler = websocket.NewHandler(
 			c.WSUpgrader(),
 			c.Hub(),
 			c.UserService(),
