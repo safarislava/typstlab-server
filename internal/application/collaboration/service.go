@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 
 	syncApp "github.com/safarislava/typstlab-server/internal/application/sync"
+	domainCollab "github.com/safarislava/typstlab-server/internal/domain/collaboration"
 	domainFile "github.com/safarislava/typstlab-server/internal/domain/file"
 	"github.com/safarislava/typstlab-server/internal/infrastructure/websocket"
 )
@@ -24,7 +25,7 @@ type messageHandler func(ctx context.Context, client *websocket.Client, rawPaylo
 // Service orchestrates real-time document synchronization and awareness over WebSocket connections.
 type Service struct {
 	syncService SyncService
-	handlers    map[websocket.MessageType]messageHandler
+	handlers    map[domainCollab.MessageType]messageHandler
 }
 
 // NewService creates a new collaboration Service.
@@ -37,13 +38,13 @@ func NewService(syncService SyncService) *Service {
 }
 
 func (s *Service) registerHandlers() {
-	s.handlers = map[websocket.MessageType]messageHandler{
-		websocket.MsgPing:            s.handlePing,
-		websocket.MsgPong:            s.handlePong,
-		websocket.MsgSyncInit:        s.handleSyncInit,
-		websocket.MsgCRDTUpdate:      s.handleCRDTUpdate,
-		websocket.MsgMetadataUpdate:  s.handleMetadataUpdate,
-		websocket.MsgAwarenessUpdate: s.handleAwarenessUpdate,
+	s.handlers = map[domainCollab.MessageType]messageHandler{
+		domainCollab.MsgPing:            s.handlePing,
+		domainCollab.MsgPong:            s.handlePong,
+		domainCollab.MsgSyncInit:        s.handleSyncInit,
+		domainCollab.MsgCRDTUpdate:      s.handleCRDTUpdate,
+		domainCollab.MsgMetadataUpdate:  s.handleMetadataUpdate,
+		domainCollab.MsgAwarenessUpdate: s.handleAwarenessUpdate,
 	}
 }
 

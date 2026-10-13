@@ -3,21 +3,24 @@ package websocket
 import (
 	"encoding/json"
 	"fmt"
+
+	domainCollab "github.com/safarislava/typstlab-server/internal/domain/collaboration"
 )
 
-type MessageType string
+// MessageType aliases the domain collaboration message type.
+type MessageType = domainCollab.MessageType
 
 const (
-	MsgSyncInit          MessageType = "sync_init"
-	MsgSyncResponse      MessageType = "sync_response"
-	MsgCRDTUpdate        MessageType = "crdt_update"
-	MsgMetadataUpdate    MessageType = "metadata_update"
-	MsgAwarenessSnapshot MessageType = "awareness_snapshot"
-	MsgAwarenessUpdate   MessageType = "awareness_update"
-	MsgAwarenessRemove   MessageType = "awareness_remove"
-	MsgPing              MessageType = "ping"
-	MsgPong              MessageType = "pong"
-	MsgError             MessageType = "error"
+	MsgSyncInit          = domainCollab.MsgSyncInit
+	MsgSyncResponse      = domainCollab.MsgSyncResponse
+	MsgCRDTUpdate        = domainCollab.MsgCRDTUpdate
+	MsgMetadataUpdate    = domainCollab.MsgMetadataUpdate
+	MsgAwarenessSnapshot = domainCollab.MsgAwarenessSnapshot
+	MsgAwarenessUpdate   = domainCollab.MsgAwarenessUpdate
+	MsgAwarenessRemove   = domainCollab.MsgAwarenessRemove
+	MsgPing              = domainCollab.MsgPing
+	MsgPong              = domainCollab.MsgPong
+	MsgError             = domainCollab.MsgError
 )
 
 // Message is the WebSocket envelope carrying a typed message and its JSON payload.
