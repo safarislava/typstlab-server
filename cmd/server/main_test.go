@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -12,7 +11,6 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
-	yjs "github.com/reearth/ygo/crdt"
 
 	"github.com/safarislava/typstlab-server/internal/infrastructure/config"
 	"github.com/safarislava/typstlab-server/internal/infrastructure/di"
@@ -171,7 +169,7 @@ func TestCreateProject_ValidationError(t *testing.T) {
 	}
 }
 
-func TestApplyFileChanges(t *testing.T) {
+func TestTypstFile_UploadAndGet(t *testing.T) {
 	t.Parallel()
 	router := setupTestRouter()
 
@@ -201,19 +199,19 @@ func TestApplyFileChanges(t *testing.T) {
 		t.Fatalf("Expected upload status code %d, got %d, body %s", http.StatusCreated, uploadRr.Code, uploadRr.Body.String())
 	}
 
-	// 3. Apply File Changes
-	doc := yjs.New()
-	delta := doc.EncodeStateAsUpdate()
-	deltaB64 := base64.StdEncoding.EncodeToString(delta)
+	// 3. Get Typst File
+	getReq, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, "/files/typst/"+fileID, http.NoBody)
+	getReq.Header.Set("Authorization", "Bearer "+token)
+	getRr := httptest.NewRecorder()
+	router.ServeHTTP(getRr, getReq)
 
-	changesBody := fmt.Sprintf(`{"delta":%q}`, deltaB64)
-	changesReq, _ := http.NewRequestWithContext(context.Background(), http.MethodPost, "/files/typst/"+fileID+"/changes", bytes.NewBufferString(changesBody))
-	changesReq.Header.Set("Authorization", "Bearer "+token)
-	changesRr := httptest.NewRecorder()
-	router.ServeHTTP(changesRr, changesReq)
-
-	if changesRr.Code != http.StatusOK {
-		t.Errorf("Expected status code %d, got %d, body: %s", http.StatusOK, changesRr.Code, changesRr.Body.String())
+	if getRr.Code != http.StatusOK {
+		t.Errorf("Expected status code %d, got %d, body: %s", http.StatusOK, getRr.Code, getRr.Body.String())
+	}
+	var fileResp map[string]any
+	_ = json.NewDecoder(getRr.Body).Decode(&fileResp)
+	if fileResp["id"] != fileID {
+		t.Errorf("Expected file ID %s, got %v", fileID, fileResp["id"])
 	}
 }
 

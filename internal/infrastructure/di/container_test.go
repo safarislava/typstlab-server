@@ -78,7 +78,7 @@ func TestContainer_InitialStateIsNil(t *testing.T) {
 
 	assertNil(t, "projectHandler", c.projectHandler)
 	assertNil(t, "fileHandler", c.fileHandler)
-	assertNil(t, "syncHandler", c.syncHandler)
+	assertNil(t, "wsHandler", c.wsHandler)
 	assertNil(t, "userHandler", c.userHandler)
 	assertNil(t, "authHandler", c.authHandler)
 	assertNil(t, "authMiddleware", c.authMiddleware)
@@ -162,7 +162,6 @@ func TestContainer_HandlersAndMiddlewares(t *testing.T) {
 
 	assertSingleton(t, "ProjectHandler", c.ProjectHandler(), c.ProjectHandler())
 	assertSingleton(t, "FileHandler", c.FileHandler(), c.FileHandler())
-	assertSingleton(t, "SyncHandler", c.SyncHandler(), c.SyncHandler())
 	assertSingleton(t, "WSHandler", c.WSHandler(), c.WSHandler())
 	assertSingleton(t, "UserHandler", c.UserHandler(), c.UserHandler())
 	assertSingleton(t, "AuthHandler", c.AuthHandler(), c.AuthHandler())

@@ -6,13 +6,14 @@
 
 ## 1. Общий обзор и архитектура
 
-Для обеспечения синхронизации файлов, созданных или изменённых клиентом в офлайн-режиме, используется двухшаговое рукопожатие («запрос-ответ») при подключении клиента к сети.
+Для обеспечения синхронизации файлов, созданных или изменённых клиентом в офлайн-режиме, используется двухшаговое рукопожатие («запрос-ответ») через постоянный WebSocket-шлюз (`GET /ws/projects/{projectID}`) при помощи сообщений `sync_init` и `sync_response`.
 
 ### Принципы протокола:
 1. **Клиентские UUID:** Все уникальные идентификаторы файлов (`id`) генерируются исключительно на стороне клиента (включая офлайн-режим).
 2. **CRDT-синхронизация дерева файлов (Metadata):** Имена файлов, структура и статусы удаления синхронизируются через Yjs CRDT метаданных проекта (`metadata_delta` и `metadata_state_vector`) автоматически и бесконфликтно.
-3. **CRDT-синхронизация содержимого Typst (Yjs):** Для текстовых файлов Typst клиент передаёт карту векторов состояния `content_vectors` (`fileID -> state_vector`). Сервер вычисляет недостающую дельту и передаёт её клиенту в инструкции `apply_changes`.
-4. **Единый эндпоинт загрузки:** Клиент загружает созданные в офлайне бинарные и Typst-файлы через единый метод `POST /projects/{projectID}/files`.
+3. **CRDT-синхронизация содержимого Typst (Yjs):** Для текстовых файлов Typst клиент передаёт карту векторов состояния `content_vectors` (`fileID -> state_vector`) в сообщении `sync_init`. Сервер вычисляет недостающую дельту и передаёт её клиенту в инструкции `apply_changes` сообщения `sync_response`.
+4. **Единый эндпоинт загрузки:** Клиент загружает созданные в офлайне бинарные и Typst-файлы через единый HTTP-метод `POST /projects/{projectID}/files`.
+5. **Реалтайм-взаимодействие:** Все последующие правки текста и метаданных передаются через сообщения `crdt_update` и `metadata_update` в том же WebSocket-соединении.
 
 ---
 
@@ -23,9 +24,13 @@ sequenceDiagram
     participant Client as Клиент (Браузер / Приложение)
     participant Server as Сервер (Go typstlab-server)
     
-    Client->>Server: POST /projects/{projectID}/sync <br/> (metadata_delta, metadata_state_vector, content_vectors)
-    Note over Server: 1. Применение client metadata_delta к CRDT дерева файлов<br/>2. Расчет серверной metadata_delta для клиента<br/>3. Применение мутаций метаданных к файлам сервера (rename/delete)<br/>4. Расчет Yjs CRDT дельт содержимого и инструкций контента
-    Server-->>Client: Response: 200 OK <br/> { metadata_delta: "...", instructions: [ ... ] }
+    Client->>Server: GET /ws/projects/{projectID} (RFC 6455 Upgrade)
+    Server-->>Client: 101 Switching Protocols
+    Server->>Client: WS: awareness_snapshot (активные соавторы и курсоры)
+    
+    Client->>Server: WS: sync_init <br/> { metadata_state_vector, content_vectors }
+    Note over Server: 1. Расчет серверной metadata_delta для клиента<br/>2. Расчет Yjs CRDT дельт содержимого Typst-файлов<br/>3. Формирование инструкций контента (download, upload, apply_changes)
+    Server-->>Client: WS: sync_response <br/> { metadata_delta, instructions }
     
     Note over Client: Применение metadata_delta к локальному CRDT дереву файлов
     
@@ -42,57 +47,57 @@ sequenceDiagram
 
 ---
 
-## 3. Эндпоинт и форматы данных
+## 3. Форматы сообщений синхронизации (WebSocket)
 
-### 3.1. Запрос клиентов (Sync Request)
+### 3.1. Запрос синхронизации клиентов (`sync_init`)
 
-**HTTP Method & Path:** `POST /projects/{projectID}/sync`  
-**Headers:**  
-* `Authorization: Bearer <JWT_TOKEN>`  
-* `Content-Type: application/json`  
+Клиент отправляет JSON-сообщение типа `sync_init`:
 
 ```json
 {
-  "metadata_delta": "base64_encoded_crdt_delta_here",
-  "metadata_state_vector": "base64_encoded_state_vector_here",
-  "content_vectors": {
-    "c30980ef-51eb-47eb-ba05-89416a5db202": "base64_encoded_typst_text_state_vector"
+  "type": "sync_init",
+  "payload": {
+    "metadata_state_vector": "base64_encoded_state_vector_here",
+    "content_vectors": {
+      "c30980ef-51eb-47eb-ba05-89416a5db202": "base64_encoded_typst_text_state_vector"
+    }
   }
 }
 ```
 
-#### Описание полей запроса:
+#### Описание полей payload запроса:
 | Поле                    | Тип                        | Обязательность | Описание                                                                  |
 |:------------------------|:---------------------------|:--------------:|:--------------------------------------------------------------------------|
-| `metadata_delta`        | `Base64 (string)`          |      Нет       | Двоичная дельта изменений CRDT дерева файлов (переименования, удаление).  |
 | `metadata_state_vector` | `Base64 (string)`          |      Нет       | Вектор состояния метаданных проекта на клиенте.                           |
 | `content_vectors`       | `Map<UUID, Base64 string>` |      Нет       | Векторы состояния Yjs для текста Typst-файлов (`fileID -> state_vector`).  |
 
 ---
 
-### 3.2. Ответ сервера (Sync Response)
+### 3.2. Ответ сервера (`sync_response`)
 
-**HTTP Status:** `200 OK`  
-**Content-Type:** `application/json`  
+Сервер отвечает JSON-сообщением типа `sync_response`:
 
 ```json
 {
-  "metadata_delta": "base64_encoded_crdt_delta_here",
-  "instructions": [
-    {
-      "action": "download",
-      "file_id": "f5127cd9-4099-4c12-a74e-6e4695e263ab"
-    },
-    {
-      "action": "upload",
-      "file_id": "e8a34bc1-443b-417d-8153-f7256561129b"
-    },
-    {
-      "action": "apply_changes",
-      "file_id": "c30980ef-51eb-47eb-ba05-89416a5db202",
-      "delta": "base64_encoded_crdt_delta_here"
-    }
-  ]
+  "type": "sync_response",
+  "payload": {
+    "metadata_delta": "base64_encoded_crdt_delta_here",
+    "instructions": [
+      {
+        "action": "download",
+        "file_id": "f5127cd9-4099-4c12-a74e-6e4695e263ab"
+      },
+      {
+        "action": "upload",
+        "file_id": "e8a34bc1-443b-417d-8153-f7256561129b"
+      },
+      {
+        "action": "apply_changes",
+        "file_id": "c30980ef-51eb-47eb-ba05-89416a5db202",
+        "delta": "base64_encoded_crdt_delta_here"
+      }
+    ]
+  }
 }
 ```
 

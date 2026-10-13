@@ -32,7 +32,6 @@ import (
 	fileHttp "github.com/safarislava/typstlab-server/internal/infrastructure/http/file"
 	middlewareHttp "github.com/safarislava/typstlab-server/internal/infrastructure/http/middleware"
 	projectHttp "github.com/safarislava/typstlab-server/internal/infrastructure/http/project"
-	syncHttp "github.com/safarislava/typstlab-server/internal/infrastructure/http/sync"
 	userHttp "github.com/safarislava/typstlab-server/internal/infrastructure/http/user"
 	"github.com/safarislava/typstlab-server/internal/infrastructure/persistence/composite"
 	"github.com/safarislava/typstlab-server/internal/infrastructure/persistence/memory"
@@ -161,9 +160,6 @@ type Container struct {
 
 	fileHandler     *fileHttp.Handler
 	fileHandlerOnce sync.Once
-
-	syncHandler     *syncHttp.Handler
-	syncHandlerOnce sync.Once
 
 	wsHandler     *websocket.Handler
 	wsHandlerOnce sync.Once
@@ -479,18 +475,9 @@ func (c *Container) FileHandler() *fileHttp.Handler {
 			c.TypstFileService(),
 			c.BinaryFileService(),
 			c.FileService(),
-			c.SyncService(),
 		)
 	})
 	return c.fileHandler
-}
-
-// SyncHandler lazily initializes and returns the sync HTTP handler.
-func (c *Container) SyncHandler() *syncHttp.Handler {
-	c.syncHandlerOnce.Do(func() {
-		c.syncHandler = syncHttp.NewHandler(c.SyncService())
-	})
-	return c.syncHandler
 }
 
 // UserHandler lazily initializes and returns the user HTTP handler.
@@ -592,7 +579,6 @@ func (c *Container) registerRoutes(r *chi.Mux) {
 	authHandler := c.AuthHandler()
 	projectHandler := c.ProjectHandler()
 	fileHandler := c.FileHandler()
-	syncHandler := c.SyncHandler()
 	wsHandler := c.WSHandler()
 	authMiddleware := c.AuthMiddleware()
 	accessMiddleware := c.AccessMiddleware()
@@ -626,14 +612,12 @@ func (c *Container) registerRoutes(r *chi.Mux) {
 			r.Post("/files", fileHandler.UploadFile)
 			r.Get("/files", fileHandler.ListProjectFiles)
 			r.With(accessMiddleware.FileAccess).Delete("/files/{fileID}", fileHandler.DeleteFile)
-			r.Post("/sync", syncHandler.Sync)
 		})
 
 		r.Route("/files", func(r chi.Router) {
 			r.Route("/typst/{fileID}", func(r chi.Router) {
 				r.Use(accessMiddleware.FileAccess)
 				r.Get("/", fileHandler.GetTypstFile)
-				r.Post("/changes", fileHandler.ApplyFileChanges)
 			})
 			r.Route("/binary/{fileID}", func(r chi.Router) {
 				r.Use(accessMiddleware.FileAccess)

@@ -1,7 +1,7 @@
 openapi: 3.0.0
 info:
   title: TypstLab Server API
-  description: Server-side API of the TypstLab collaborative editing platform, built in Go. Handles user auth, project management, file uploads with client UUIDs, CRDT updates, and offline manifest synchronization.
+  description: Server-side API of the TypstLab collaborative editing platform, built in Go. Handles user authentication, project management, client-generated file uploads, real-time collaboration, awareness, and offline CRDT synchronization via RFC 6455 WebSockets.
   version: 1.0.0
 servers:
   - url: typstlab-api.safarislava.tech/
@@ -279,62 +279,47 @@ paths:
         '403':
           description: Forbidden
 
-  /projects/{projectID}/sync:
-    post:
-      summary: Synchronize project metadata and file contents with server
-      description: |
-        Performs a two-step handshake for offline project and file synchronization between client and server.
-        
-        **Workflow:**
-        1. **Client Request:** Client sends CRDT metadata delta/state vector for project file tree and `content_vectors` for Typst files.
-        2. **Server Response:** Server applies metadata delta, updates local file records, computes server `metadata_delta` for client, and returns content instructions (`download`, `upload`, `apply_changes`).
-        
-        **Instruction Actions (`action`):**
-        - `download`: Client should download new file from server (`GET /files/...`).
-        - `upload`: Client should upload offline created file to server (`POST /projects/{projectID}/files`).
-        - `apply_changes`: Client should apply Base64 CRDT `delta` update to its Yjs document.
-      tags:
-        - Sync
-      security:
-        - BearerAuth: []
-      parameters:
-        - name: projectID
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/SyncRequest'
-      responses:
-        '200':
-          description: Sync request processed successfully, returns metadata delta and content instructions
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/SyncResponse'
-        '400':
-          description: Invalid request body or file UUID format
-        '401':
-          description: Unauthorized
-        '403':
-          description: Forbidden
-
   /ws/projects/{projectID}:
     get:
-      summary: Establish real-time collaboration WebSocket connection
+      summary: Establish real-time collaboration and synchronization WebSocket session
       description: |
-        Upgrades HTTP connection to an RFC 6455 persistent WebSocket session for real-time document synchronization and cursor tracking (Awareness).
+        Upgrades HTTP connection to an RFC 6455 persistent WebSocket session for real-time document collaboration, cursor tracking (Awareness), and offline CRDT synchronization.
 
-        **Mandatory WebSocket:**
-        Requests without valid RFC 6455 WebSocket handshake headers are strictly rejected with HTTP `426 Upgrade Required`.
+        ### Protocol Requirements
+        * **Mandatory WebSocket:** Requests without RFC 6455 WebSocket handshake headers (`Upgrade: websocket`, `Connection: Upgrade`, `Sec-WebSocket-Version: 13`) are strictly rejected with HTTP `426 Upgrade Required`.
+        * **Strict Authentication:** Requires HTTP Header `Authorization: Bearer <token>`. Passing tokens via URL query parameters (`?token=...`) is strictly rejected with HTTP `401 Unauthorized`.
+        * **Access Control:** User must be an authorized member/collaborator of the specified project (`403 Forbidden` if not authorized).
 
-        **Strict Authentication:**
-        Requires `Authorization: Bearer <token>` in the initial handshake request headers. Authentication via query parameters (`?token=...`) is strictly rejected with `401 Unauthorized`.
+        ### JSON Message Envelope
+        All frames exchanged over WebSocket are UTF-8 JSON text frames encapsulated in a common envelope:
+        ```json
+        {
+          "type": "<message_type>",
+          "payload": { ... }
+        }
+        ```
+        Refer to `#/components/schemas/WSMessageEnvelope` and `#/components/schemas/WSMessageType`.
+
+        ### Protocol Flow & Message Types
+        1. **Awareness Snapshot (`awareness_snapshot`):**
+           Upon joining the room, the server immediately sends an initial snapshot of active collaborators and their cursor positions (`#/components/schemas/WSAwarenessSnapshotPayload`).
+        2. **Document & Metadata Synchronization (`sync_init` & `sync_response`):**
+           Client initiates sync by sending `sync_init` (`#/components/schemas/WSSyncInitPayload`) with its local `metadata_state_vector` and Typst `content_vectors`.
+           Server calculates the missing metadata and content deltas and replies with `sync_response` (`#/components/schemas/WSSyncResponsePayload`), containing `metadata_delta` and a list of instructions (`download`, `upload`, `apply_changes`).
+        3. **Real-Time Typst CRDT Edits (`crdt_update`):**
+           - **Client -> Server:** Client sends `crdt_update` (`#/components/schemas/WSCRDTUpdateRequest`) with `file_id` and Base64 `delta`.
+           - **Server -> Room:** Server persists the delta and broadcasts `crdt_update` (`#/components/schemas/WSCRDTUpdateBroadcast`) with `file_id`, `sender_id`, and `delta` to all other participants.
+        4. **File Tree / Metadata Updates (`metadata_update`):**
+           - **Client -> Server:** Client sends `metadata_update` (`#/components/schemas/WSMetadataUpdateRequest`) with Base64 `delta`.
+           - **Server -> Room:** Server merges metadata and broadcasts `metadata_update` (`#/components/schemas/WSMetadataUpdateBroadcast`) with `sender_id` and `delta` to all other participants.
+        5. **Cursor & Presence Tracking (`awareness_update` & `awareness_remove`):**
+           - **Client -> Server:** Client sends `awareness_update` (`#/components/schemas/WSAwarenessUpdateClientRequest`) with `file_id` and `cursor: {anchor, head}`.
+           - **Server -> Room:** Server attaches user identity and color and broadcasts `awareness_update` (`#/components/schemas/WSUserPresence`) to other participants.
+           - When a user disconnects, server broadcasts `awareness_remove` (`#/components/schemas/WSAwarenessRemovePayload`) with `user_id`.
+        6. **Heartbeat (`ping` & `pong`):**
+           Client and server periodically exchange `ping` and `pong` to verify connection liveness.
+        7. **Server Errors (`error`):**
+           Server sends `error` (`#/components/schemas/WSErrorPayload`) when payload decoding or domain processing fails.
       tags:
         - Collaboration
       security:
@@ -462,49 +447,6 @@ paths:
                 $ref: '#/components/schemas/TypstFileResponse'
         '400':
           description: Not a Typst file
-        '401':
-          description: Unauthorized
-        '403':
-          description: Forbidden
-        '404':
-          description: File not found
-
-  /files/typst/{fileID}/changes:
-    post:
-      summary: Apply CRDT delta updates to a Typst file
-      tags:
-        - Files
-      security:
-        - BearerAuth: []
-      parameters:
-        - name: fileID
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required:
-                - delta
-              properties:
-                delta:
-                  type: string
-                  format: byte
-                  description: Base64-encoded Yjs state update delta bytes
-      responses:
-        '200':
-          description: Delta applied successfully, returns updated state
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/TypstFileResponse'
-        '400':
-          description: Invalid request body or file type
         '401':
           description: Unauthorized
         '403':
@@ -736,37 +678,49 @@ components:
           type: string
           format: date-time
 
-    SyncRequest:
+    WSMessageType:
+      type: string
+      enum:
+        - sync_init
+        - sync_response
+        - crdt_update
+        - metadata_update
+        - awareness_snapshot
+        - awareness_update
+        - awareness_remove
+        - ping
+        - pong
+        - error
+      description: Real-time collaboration message types over WebSocket.
+
+    WSMessageEnvelope:
       type: object
+      required:
+        - type
+        - payload
       properties:
-        metadata_delta:
-          type: string
-          format: byte
-          description: Base64-encoded binary CRDT delta update of project metadata / file tree
+        type:
+          $ref: '#/components/schemas/WSMessageType'
+        payload:
+          type: object
+          description: Message payload conforming to the specific schema of message type.
+
+    WSSyncInitPayload:
+      type: object
+      description: Client initial synchronization request payload (Client -> Server).
+      properties:
         metadata_state_vector:
           type: string
           format: byte
-          description: Base64-encoded client project metadata CRDT state vector
+          description: Base64-encoded client project metadata CRDT state vector.
         content_vectors:
           type: object
           additionalProperties:
             type: string
             format: byte
-          description: Map of file UUID to Base64-encoded content Yjs state vector (for Typst files)
+          description: Map of file UUID to Base64-encoded content Yjs state vector (for Typst files).
 
-    SyncResponse:
-      type: object
-      properties:
-        metadata_delta:
-          type: string
-          format: byte
-          description: Base64-encoded binary CRDT delta update of project metadata from server
-        instructions:
-          type: array
-          items:
-            $ref: '#/components/schemas/SyncInstruction'
-
-    SyncInstruction:
+    WSSyncInstruction:
       type: object
       required:
         - action
@@ -776,6 +730,7 @@ components:
           type: string
           enum: [download, upload, apply_changes]
           example: download
+          description: Action instruction for synchronizing file content.
         file_id:
           type: string
           format: uuid
@@ -783,4 +738,177 @@ components:
         delta:
           type: string
           format: byte
-          description: Base64-encoded CRDT delta update (returned for apply_changes action)
+          description: Base64-encoded CRDT delta update (included for apply_changes).
+
+    WSSyncResponsePayload:
+      type: object
+      description: Server initial synchronization response payload (Server -> Client).
+      properties:
+        metadata_delta:
+          type: string
+          format: byte
+          description: Base64-encoded binary CRDT delta update of project metadata from server.
+        instructions:
+          type: array
+          items:
+            $ref: '#/components/schemas/WSSyncInstruction'
+          description: List of content synchronization commands computed by server.
+
+    WSCRDTUpdateRequest:
+      type: object
+      description: Client-initiated Typst CRDT delta update payload (Client -> Server).
+      required:
+        - file_id
+        - delta
+      properties:
+        file_id:
+          type: string
+          format: uuid
+          example: c30980ef-51eb-47eb-ba05-89416a5db202
+        delta:
+          type: string
+          format: byte
+          description: Base64-encoded Yjs binary update delta.
+
+    WSCRDTUpdateBroadcast:
+      type: object
+      description: Server-broadcast Typst CRDT delta update payload (Server -> Collaborators).
+      required:
+        - file_id
+        - sender_id
+        - delta
+      properties:
+        file_id:
+          type: string
+          format: uuid
+          example: c30980ef-51eb-47eb-ba05-89416a5db202
+        sender_id:
+          type: string
+          format: uuid
+          example: a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11
+          description: Authenticated user UUID of the author who made the change. Stamped by server.
+        delta:
+          type: string
+          format: byte
+          description: Base64-encoded Yjs binary update delta.
+
+    WSMetadataUpdateRequest:
+      type: object
+      description: Client-initiated file tree / project metadata CRDT delta update (Client -> Server).
+      required:
+        - delta
+      properties:
+        delta:
+          type: string
+          format: byte
+          description: Base64-encoded metadata Yjs binary update delta.
+
+    WSMetadataUpdateBroadcast:
+      type: object
+      description: Server-broadcast project metadata CRDT delta update (Server -> Collaborators).
+      required:
+        - sender_id
+        - delta
+      properties:
+        sender_id:
+          type: string
+          format: uuid
+          example: a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11
+          description: Authenticated user UUID of the author who modified the metadata. Stamped by server.
+        delta:
+          type: string
+          format: byte
+          description: Base64-encoded metadata Yjs binary update delta.
+
+    WSCursor:
+      type: object
+      description: Caret position and text selection range within active file.
+      required:
+        - anchor
+        - head
+      properties:
+        anchor:
+          type: integer
+          example: 42
+          description: Starting character offset of selection / caret.
+        head:
+          type: integer
+          example: 42
+          description: Ending character offset of selection / caret.
+
+    WSUserPresence:
+      type: object
+      description: Collaborator awareness presence and caret info.
+      required:
+        - user_id
+        - email
+        - color
+        - file_id
+        - cursor
+      properties:
+        user_id:
+          type: string
+          format: uuid
+          example: a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11
+        email:
+          type: string
+          format: email
+          example: user@example.com
+        color:
+          type: string
+          example: "#3B82F6"
+          description: Deterministic HEX color code assigned to collaborator.
+        file_id:
+          type: string
+          format: uuid
+          example: c30980ef-51eb-47eb-ba05-89416a5db202
+          description: Active file currently being edited by collaborator.
+        cursor:
+          $ref: '#/components/schemas/WSCursor'
+
+    WSAwarenessSnapshotPayload:
+      type: object
+      description: Initial room presence snapshot sent upon connection (Server -> Client).
+      required:
+        - presences
+      properties:
+        presences:
+          type: array
+          items:
+            $ref: '#/components/schemas/WSUserPresence'
+          description: List of all active collaborators in the project room.
+
+    WSAwarenessUpdateClientRequest:
+      type: object
+      description: Client cursor position update payload (Client -> Server).
+      required:
+        - file_id
+        - cursor
+      properties:
+        file_id:
+          type: string
+          format: uuid
+          example: c30980ef-51eb-47eb-ba05-89416a5db202
+        cursor:
+          $ref: '#/components/schemas/WSCursor'
+
+    WSAwarenessRemovePayload:
+      type: object
+      description: Notification sent when a collaborator disconnects from room (Server -> Collaborators).
+      required:
+        - user_id
+      properties:
+        user_id:
+          type: string
+          format: uuid
+          example: a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11
+
+    WSErrorPayload:
+      type: object
+      description: Error message payload sent by server on malformed or rejected messages (Server -> Client).
+      required:
+        - message
+      properties:
+        message:
+          type: string
+          example: invalid crdt update payload
