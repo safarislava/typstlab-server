@@ -15,6 +15,7 @@ import (
 	"github.com/google/uuid"
 
 	collabApp "github.com/safarislava/typstlab-server/internal/application/collaboration"
+	syncApp "github.com/safarislava/typstlab-server/internal/application/sync"
 	domainCollab "github.com/safarislava/typstlab-server/internal/domain/collaboration"
 	domainProject "github.com/safarislava/typstlab-server/internal/domain/project"
 	domainUser "github.com/safarislava/typstlab-server/internal/domain/user"
@@ -76,7 +77,7 @@ func (m *mockUserService) GetByID(ctx context.Context, id uuid.UUID) (*domainUse
 }
 
 type mockCollaborationService struct {
-	syncInitFunc            func(ctx context.Context, projectID uuid.UUID, req collabApp.SyncInitRequest) (*collabApp.SyncInitResponse, error)
+	syncInitFunc            func(ctx context.Context, projectID uuid.UUID, req collabApp.SyncInitRequest) (*syncApp.Response, error)
 	applyCRDTUpdateFunc     func(ctx context.Context, fileID uuid.UUID, delta []byte) error
 	applyMetadataUpdateFunc func(ctx context.Context, projectID uuid.UUID, delta []byte) error
 }
@@ -85,7 +86,7 @@ func (m *mockCollaborationService) SyncInit(
 	ctx context.Context,
 	projectID uuid.UUID,
 	req collabApp.SyncInitRequest,
-) (*collabApp.SyncInitResponse, error) {
+) (*syncApp.Response, error) {
 	if m.syncInitFunc != nil {
 		return m.syncInitFunc(ctx, projectID, req)
 	}

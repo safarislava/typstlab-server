@@ -23,19 +23,6 @@ type SyncInitRequest struct {
 	ContentVectors      map[uuid.UUID][]byte
 }
 
-// SyncInstruction represents a single sync instruction generated for a file.
-type SyncInstruction struct {
-	Action string
-	FileID uuid.UUID
-	Delta  []byte
-}
-
-// SyncInitResponse represents the application result of sync initialization.
-type SyncInitResponse struct {
-	MetadataDelta []byte
-	Instructions  []SyncInstruction
-}
-
 // Service orchestrates real-time document synchronization and metadata updates.
 type Service struct {
 	syncService SyncService
@@ -49,7 +36,7 @@ func NewService(syncService SyncService) *Service {
 }
 
 // SyncInit coordinates initial project metadata sync and file content instruction generation.
-func (s *Service) SyncInit(ctx context.Context, projectID uuid.UUID, req SyncInitRequest) (*SyncInitResponse, error) {
+func (s *Service) SyncInit(ctx context.Context, projectID uuid.UUID, req SyncInitRequest) (*syncApp.Response, error) {
 	appReq := &syncApp.Request{
 		MetadataStateVector: req.MetadataStateVector,
 		ContentVectors:      req.ContentVectors,
@@ -60,19 +47,7 @@ func (s *Service) SyncInit(ctx context.Context, projectID uuid.UUID, req SyncIni
 		return nil, fmt.Errorf("sync init: %w", err)
 	}
 
-	instructions := make([]SyncInstruction, 0, len(resp.Instructions))
-	for _, inst := range resp.Instructions {
-		instructions = append(instructions, SyncInstruction{
-			Action: string(inst.Action),
-			FileID: inst.FileID,
-			Delta:  inst.Delta,
-		})
-	}
-
-	return &SyncInitResponse{
-		MetadataDelta: resp.MetadataDelta,
-		Instructions:  instructions,
-	}, nil
+	return resp, nil
 }
 
 // ApplyCRDTUpdate persists incremental CRDT file changes.

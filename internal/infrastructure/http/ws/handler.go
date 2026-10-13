@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 
 	collabApp "github.com/safarislava/typstlab-server/internal/application/collaboration"
+	syncApp "github.com/safarislava/typstlab-server/internal/application/sync"
 	domainCollab "github.com/safarislava/typstlab-server/internal/domain/collaboration"
 	domainUser "github.com/safarislava/typstlab-server/internal/domain/user"
 	"github.com/safarislava/typstlab-server/internal/infrastructure/http/middleware"
@@ -24,7 +25,7 @@ type UserService interface {
 
 // CollaborationService defines the contract for document synchronization operations.
 type CollaborationService interface {
-	SyncInit(ctx context.Context, projectID uuid.UUID, req collabApp.SyncInitRequest) (*collabApp.SyncInitResponse, error)
+	SyncInit(ctx context.Context, projectID uuid.UUID, req collabApp.SyncInitRequest) (*syncApp.Response, error)
 	ApplyCRDTUpdate(ctx context.Context, fileID uuid.UUID, delta []byte) error
 	ApplyMetadataUpdate(ctx context.Context, projectID uuid.UUID, delta []byte) error
 }
@@ -183,7 +184,7 @@ func (h *Handler) handleSyncInit(ctx context.Context, client *websocket.Client, 
 	instructions := make([]syncInstructionPayload, 0, len(resp.Instructions))
 	for _, inst := range resp.Instructions {
 		instructions = append(instructions, syncInstructionPayload{
-			Action: inst.Action,
+			Action: string(inst.Action),
 			FileID: inst.FileID,
 			Delta:  inst.Delta,
 		})
