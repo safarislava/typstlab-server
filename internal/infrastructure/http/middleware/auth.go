@@ -4,7 +4,6 @@ import (
 	"context"
 	"net/http"
 	"slices"
-	"strings"
 
 	"github.com/google/uuid"
 
@@ -18,6 +17,8 @@ const (
 	userIDKey contextKey = "user_id"
 	roleKey   contextKey = "role"
 )
+
+const AccessTokenCookieName = "access_token"
 
 type AuthService interface {
 	Authorize(t domainToken.Token) (uuid.UUID, domainUser.Role, error)
@@ -34,14 +35,10 @@ func NewAuthMiddleware(authService AuthService) *AuthMiddleware {
 }
 
 func extractToken(r *http.Request) string {
-	authHeader := r.Header.Get("Authorization")
-	if authHeader != "" {
-		parts := strings.Split(authHeader, " ")
-		if len(parts) == 2 && strings.EqualFold(parts[0], "bearer") {
-			return parts[1]
-		}
+	if cookie, err := r.Cookie(AccessTokenCookieName); err == nil && cookie.Value != "" {
+		return cookie.Value
 	}
-	return r.URL.Query().Get("token")
+	return ""
 }
 
 func (m *AuthMiddleware) Authenticate(next http.Handler) http.Handler {

@@ -50,7 +50,7 @@ func (m *mockAuthService) Logout(ctx context.Context, refreshToken token.Token) 
 func TestAuthHandler_Login(t *testing.T) {
 	t.Parallel()
 
-	at, _ := token.NewToken("access_token")
+	at, _ := token.NewToken(accessTokenCookieName)
 	rtVal, _ := token.NewToken(testRefreshToken)
 	s, _ := session.NewSession(rtVal, uuid.New(), time.Now().Add(24*time.Hour))
 
@@ -84,12 +84,18 @@ func TestAuthHandler_Login(t *testing.T) {
 		t.Errorf("Expected status 200, got %d, body %s", rr.Code, rr.Body.String())
 	}
 
-	// Check that cookie was set
+	// Check that cookies were set
 	rtCookie := getCookieByName(rr.Result().Cookies(), refreshTokenCookieName)
 	if rtCookie == nil {
 		t.Error("Expected refresh_token cookie to be set")
 	} else if rtCookie.Value == "" {
 		t.Error("Expected refresh token value to be non-empty")
+	}
+	atCookie := getCookieByName(rr.Result().Cookies(), accessTokenCookieName)
+	if atCookie == nil {
+		t.Error("Expected access_token cookie to be set")
+	} else if atCookie.Value != accessTokenCookieName {
+		t.Errorf("Expected access_token value %q, got %q", accessTokenCookieName, atCookie.Value)
 	}
 
 	// Case 3: Login failure
@@ -105,7 +111,7 @@ func TestAuthHandler_Login(t *testing.T) {
 func TestAuthHandler_Refresh(t *testing.T) {
 	t.Parallel()
 
-	at, _ := token.NewToken("access_token")
+	at, _ := token.NewToken(accessTokenCookieName)
 	rtVal, _ := token.NewToken(testRefreshToken)
 	s, _ := session.NewSession(rtVal, uuid.New(), time.Now().Add(24*time.Hour))
 
@@ -137,6 +143,14 @@ func TestAuthHandler_Refresh(t *testing.T) {
 	handler.Refresh(rr, req)
 	if rr.Code != http.StatusOK {
 		t.Errorf("Expected status 200, got %d, body %s", rr.Code, rr.Body.String())
+	}
+
+	// Check that access_token cookie was set on refresh
+	atCookie := getCookieByName(rr.Result().Cookies(), accessTokenCookieName)
+	if atCookie == nil {
+		t.Error("Expected access_token cookie to be set on refresh")
+	} else if atCookie.Value != accessTokenCookieName {
+		t.Errorf("Expected access_token value %q, got %q", accessTokenCookieName, atCookie.Value)
 	}
 
 	// Case 3: Invalid token in cookie
@@ -174,12 +188,18 @@ func TestAuthHandler_Logout(t *testing.T) {
 		t.Error("Expected logout to be called")
 	}
 
-	// Check that cookie was cleared (MaxAge < 0)
+	// Check that cookies were cleared (MaxAge < 0)
 	rtCookie := getCookieByName(rr.Result().Cookies(), refreshTokenCookieName)
 	if rtCookie == nil {
 		t.Error("Expected refresh_token cookie to be returned")
 	} else if rtCookie.MaxAge >= 0 {
-		t.Errorf("Expected MaxAge to be negative to clear cookie, got %d", rtCookie.MaxAge)
+		t.Errorf("Expected refresh_token MaxAge to be negative to clear cookie, got %d", rtCookie.MaxAge)
+	}
+	atCookie := getCookieByName(rr.Result().Cookies(), accessTokenCookieName)
+	if atCookie == nil {
+		t.Error("Expected access_token cookie to be returned")
+	} else if atCookie.MaxAge >= 0 {
+		t.Errorf("Expected access_token MaxAge to be negative to clear cookie, got %d", atCookie.MaxAge)
 	}
 }
 

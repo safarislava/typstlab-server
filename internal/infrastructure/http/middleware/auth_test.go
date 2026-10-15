@@ -13,6 +13,8 @@ import (
 	domainUser "github.com/safarislava/typstlab-server/internal/domain/user"
 )
 
+const testValidCookieToken = "valid-cookie-token"
+
 type mockAuthService struct {
 	authorizeFunc func(t token.Token) (uuid.UUID, domainUser.Role, error)
 }
@@ -43,10 +45,14 @@ func TestAuthMiddleware_Authenticate_NoAuthHeader(t *testing.T) {
 	}
 }
 
-func TestAuthMiddleware_Authenticate_InvalidHeader(t *testing.T) {
+func TestAuthMiddleware_Authenticate_AuthorizationHeaderIgnored(t *testing.T) {
 	t.Parallel()
 
-	authSvc := &mockAuthService{}
+	authSvc := &mockAuthService{
+		authorizeFunc: func(t token.Token) (uuid.UUID, domainUser.Role, error) {
+			return uuid.Nil, "", errors.New("should not be called for Authorization header")
+		},
+	}
 	mw := NewAuthMiddleware(authSvc)
 
 	var ctxUserID uuid.UUID
@@ -56,10 +62,10 @@ func TestAuthMiddleware_Authenticate_InvalidHeader(t *testing.T) {
 	})
 
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/", http.NoBody)
-	req.Header.Set("Authorization", "invalid")
+	req.Header.Set("Authorization", "Bearer valid-token")
 	mw.Authenticate(nextHandler).ServeHTTP(httptest.NewRecorder(), req)
 	if ctxUserID != uuid.Nil {
-		t.Error("Expected userID context to be nil when auth header is invalid")
+		t.Error("Expected userID context to be nil when token is in Authorization header")
 	}
 }
 
@@ -80,14 +86,14 @@ func TestAuthMiddleware_Authenticate_InvalidToken(t *testing.T) {
 	})
 
 	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/", http.NoBody)
-	req.Header.Set("Authorization", "Bearer invalid-token")
+	req.AddCookie(&http.Cookie{Name: AccessTokenCookieName, Value: "invalid-token"})
 	mw.Authenticate(nextHandler).ServeHTTP(httptest.NewRecorder(), req)
 	if ctxUserID != uuid.Nil {
 		t.Error("Expected userID context to be nil when token is invalid")
 	}
 }
 
-func TestAuthMiddleware_Authenticate_ValidToken(t *testing.T) {
+func TestAuthMiddleware_Authenticate_ValidTokenInCookie(t *testing.T) {
 	t.Parallel()
 
 	userID := uuid.New()
@@ -95,7 +101,7 @@ func TestAuthMiddleware_Authenticate_ValidToken(t *testing.T) {
 
 	authSvc := &mockAuthService{
 		authorizeFunc: func(t token.Token) (uuid.UUID, domainUser.Role, error) {
-			if t.Value() == "valid-token" {
+			if t.Value() == testValidCookieToken {
 				return userID, role, nil
 			}
 			return uuid.Nil, "", errors.New("invalid token")
@@ -111,8 +117,8 @@ func TestAuthMiddleware_Authenticate_ValidToken(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/", http.NoBody)
-	req.Header.Set("Authorization", "Bearer valid-token")
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/ws/projects/123", http.NoBody)
+	req.AddCookie(&http.Cookie{Name: AccessTokenCookieName, Value: testValidCookieToken})
 	mw.Authenticate(nextHandler).ServeHTTP(httptest.NewRecorder(), req)
 	if ctxUserID != userID {
 		t.Errorf("Expected userID context %s, got %s", userID, ctxUserID)
@@ -122,37 +128,26 @@ func TestAuthMiddleware_Authenticate_ValidToken(t *testing.T) {
 	}
 }
 
-func TestAuthMiddleware_Authenticate_ValidTokenInQueryParam(t *testing.T) {
+func TestAuthMiddleware_Authenticate_QueryParamIgnored(t *testing.T) {
 	t.Parallel()
-
-	userID := uuid.New()
-	role := domainUser.RoleUser
 
 	authSvc := &mockAuthService{
 		authorizeFunc: func(t token.Token) (uuid.UUID, domainUser.Role, error) {
-			if t.Value() == "valid-query-token" {
-				return userID, role, nil
-			}
-			return uuid.Nil, "", errors.New("invalid token")
+			return uuid.Nil, "", errors.New("should not be called for query params")
 		},
 	}
 	mw := NewAuthMiddleware(authSvc)
 
 	var ctxUserID uuid.UUID
-	var ctxRole domainUser.Role
 	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctxUserID, _ = r.Context().Value(userIDKey).(uuid.UUID)
-		ctxRole, _ = r.Context().Value(roleKey).(domainUser.Role)
 		w.WriteHeader(http.StatusOK)
 	})
 
-	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/ws/projects/123?token=valid-query-token", http.NoBody)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/ws/projects/123?token=some-token", http.NoBody)
 	mw.Authenticate(nextHandler).ServeHTTP(httptest.NewRecorder(), req)
-	if ctxUserID != userID {
-		t.Errorf("Expected userID context %s, got %s", userID, ctxUserID)
-	}
-	if ctxRole != role {
-		t.Errorf("Expected role context %s, got %s", role, ctxRole)
+	if ctxUserID != uuid.Nil {
+		t.Errorf("Expected userID context to be nil when token is only in query param, got %s", ctxUserID)
 	}
 }
 

@@ -235,7 +235,7 @@ func TestContainer_RouterAuthAndProjectFlow(t *testing.T) {
 	projID := uuid.New().String()
 	projBody := fmt.Sprintf(`{"id":%q,"name":"DI Project"}`, projID)
 	projReq := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/projects", bytes.NewBufferString(projBody))
-	projReq.Header.Set("Authorization", "Bearer "+token)
+	projReq.AddCookie(&http.Cookie{Name: "access_token", Value: token})
 	projRr := httptest.NewRecorder()
 	router.ServeHTTP(projRr, projReq)
 

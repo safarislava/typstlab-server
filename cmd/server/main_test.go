@@ -16,7 +16,10 @@ import (
 	"github.com/safarislava/typstlab-server/internal/infrastructure/di"
 )
 
-const typstlabLink = "https://typstlab.safarislava.tech"
+const (
+	typstlabLink          = "https://typstlab.safarislava.tech"
+	accessTokenCookieName = "access_token"
+)
 
 func setupTestRouter() *chi.Mux {
 	cfg, err := config.Load("../../configs/config.json")
@@ -26,7 +29,7 @@ func setupTestRouter() *chi.Mux {
 	return di.New(cfg, di.WithMemoryRepositories()).Router()
 }
 
-func registerAndLogin(t *testing.T, router http.Handler, email, password string) string {
+func registerAndLogin(t *testing.T, router http.Handler, email, password string) *http.Cookie {
 	t.Helper()
 
 	regBody := fmt.Sprintf(`{"email":%q,"password":%q}`, email, password)
@@ -45,12 +48,14 @@ func registerAndLogin(t *testing.T, router http.Handler, email, password string)
 		t.Fatalf("Failed to login user: status %d, body %s", loginRr.Code, loginRr.Body.String())
 	}
 
-	var loginResp map[string]string
-	if err := json.NewDecoder(loginRr.Body).Decode(&loginResp); err != nil {
-		t.Fatalf("Failed to decode login response: %v", err)
+	for _, c := range loginRr.Result().Cookies() {
+		if c.Name == accessTokenCookieName {
+			return c
+		}
 	}
 
-	return loginResp["token"]
+	t.Fatal("Expected access_token cookie to be set in login response")
+	return nil
 }
 
 func TestHealthEndpoint(t *testing.T) {
@@ -79,7 +84,7 @@ func TestCreateProject(t *testing.T) {
 	t.Parallel()
 	router := setupTestRouter()
 
-	token := registerAndLogin(t, router, "test@example.com", "secretpassword")
+	authCookie := registerAndLogin(t, router, "test@example.com", "secretpassword")
 
 	projectID := uuid.New().String()
 	body := fmt.Sprintf(`{"id":%q,"name":"My Test Project"}`, projectID)
@@ -92,7 +97,7 @@ func TestCreateProject(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create request: %v", err)
 	}
-	req.Header.Set("Authorization", "Bearer "+token)
+	req.AddCookie(authCookie)
 
 	rr := httptest.NewRecorder()
 	router.ServeHTTP(rr, req)
@@ -132,8 +137,8 @@ func TestCreateProject_InvalidJSON(t *testing.T) {
 		t.Fatalf("Failed to create request: %v", err)
 	}
 
-	token := registerAndLogin(t, router, "test_invalid_json@example.com", "password")
-	req.Header.Set("Authorization", "Bearer "+token)
+	authCookie := registerAndLogin(t, router, "test_invalid_json@example.com", "password")
+	req.AddCookie(authCookie)
 
 	rr := httptest.NewRecorder()
 	router.ServeHTTP(rr, req)
@@ -147,7 +152,7 @@ func TestCreateProject_ValidationError(t *testing.T) {
 	t.Parallel()
 	router := setupTestRouter()
 
-	token := registerAndLogin(t, router, "test2@example.com", "secretpassword")
+	authCookie := registerAndLogin(t, router, "test2@example.com", "secretpassword")
 
 	reqBody := fmt.Sprintf(`{"id":%q,"name":""}`, uuid.New().String())
 	req, err := http.NewRequestWithContext(
@@ -159,7 +164,7 @@ func TestCreateProject_ValidationError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create request: %v", err)
 	}
-	req.Header.Set("Authorization", "Bearer "+token)
+	req.AddCookie(authCookie)
 
 	rr := httptest.NewRecorder()
 	router.ServeHTTP(rr, req)
@@ -173,13 +178,13 @@ func TestTypstFile_UploadAndGet(t *testing.T) {
 	t.Parallel()
 	router := setupTestRouter()
 
-	token := registerAndLogin(t, router, "test_changes@example.com", "secretpassword")
+	authCookie := registerAndLogin(t, router, "test_changes@example.com", "secretpassword")
 
 	// 1. Create Project
 	projectID := uuid.New().String()
 	createProjectBody := fmt.Sprintf(`{"id":%q,"name":"My Test Project"}`, projectID)
 	req, _ := http.NewRequestWithContext(context.Background(), http.MethodPost, "/projects", bytes.NewBufferString(createProjectBody))
-	req.Header.Set("Authorization", "Bearer "+token)
+	req.AddCookie(authCookie)
 	rr := httptest.NewRecorder()
 	router.ServeHTTP(rr, req)
 	if rr.Code != http.StatusCreated {
@@ -192,7 +197,7 @@ func TestTypstFile_UploadAndGet(t *testing.T) {
 	fileID := uuid.New().String()
 	uploadBody := fmt.Sprintf(`{"id":%q,"name":"test.typxml","content":""}`, fileID)
 	uploadReq, _ := http.NewRequestWithContext(context.Background(), http.MethodPost, "/projects/"+projectID+"/files", bytes.NewBufferString(uploadBody))
-	uploadReq.Header.Set("Authorization", "Bearer "+token)
+	uploadReq.AddCookie(authCookie)
 	uploadRr := httptest.NewRecorder()
 	router.ServeHTTP(uploadRr, uploadReq)
 	if uploadRr.Code != http.StatusCreated {
@@ -201,7 +206,7 @@ func TestTypstFile_UploadAndGet(t *testing.T) {
 
 	// 3. Get Typst File
 	getReq, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, "/files/typst/"+fileID, http.NoBody)
-	getReq.Header.Set("Authorization", "Bearer "+token)
+	getReq.AddCookie(authCookie)
 	getRr := httptest.NewRecorder()
 	router.ServeHTTP(getRr, getReq)
 
@@ -257,5 +262,50 @@ func TestCORS(t *testing.T) {
 	getAllowOrigin := getRr.Header().Get("Access-Control-Allow-Origin")
 	if getAllowOrigin != typstlabLink && getAllowOrigin != "*" {
 		t.Errorf("Expected Access-Control-Allow-Origin on GET request, got %q", getAllowOrigin)
+	}
+}
+
+func TestAuth_CookieBasedAccess(t *testing.T) {
+	t.Parallel()
+	router := setupTestRouter()
+
+	authCookie := registerAndLogin(t, router, "cookie_user@example.com", "secretpassword")
+
+	projectID := uuid.New().String()
+	createProjectBody := fmt.Sprintf(`{"id":%q,"name":"Cookie Project"}`, projectID)
+	projReq, _ := http.NewRequestWithContext(context.Background(), http.MethodPost, "/projects", bytes.NewBufferString(createProjectBody))
+	projReq.AddCookie(authCookie)
+	projRr := httptest.NewRecorder()
+	router.ServeHTTP(projRr, projReq)
+	if projRr.Code != http.StatusCreated {
+		t.Fatalf("Expected 201 Created with cookie auth, got %d (body: %s)", projRr.Code, projRr.Body.String())
+	}
+}
+
+func TestAuth_RejectionsWithoutCookie(t *testing.T) {
+	t.Parallel()
+	router := setupTestRouter()
+
+	authCookie := registerAndLogin(t, router, "reject_user@example.com", "secretpassword")
+
+	// 1. Query param ?token=... without cookie must be rejected (401 Unauthorized)
+	queryProjID := uuid.New().String()
+	queryBody := fmt.Sprintf(`{"id":%q,"name":"Query Project"}`, queryProjID)
+	queryReq, _ := http.NewRequestWithContext(context.Background(), http.MethodPost, "/projects?token="+authCookie.Value, bytes.NewBufferString(queryBody))
+	queryRr := httptest.NewRecorder()
+	router.ServeHTTP(queryRr, queryReq)
+	if queryRr.Code != http.StatusUnauthorized {
+		t.Fatalf("Expected 401 Unauthorized when passing token via query param, got %d", queryRr.Code)
+	}
+
+	// 2. Authorization header without cookie must ALSO be rejected (401 Unauthorized)
+	headerProjID := uuid.New().String()
+	headerBody := fmt.Sprintf(`{"id":%q,"name":"Header Project"}`, headerProjID)
+	headerReq, _ := http.NewRequestWithContext(context.Background(), http.MethodPost, "/projects", bytes.NewBufferString(headerBody))
+	headerReq.Header.Set("Authorization", "Bearer "+authCookie.Value)
+	headerRr := httptest.NewRecorder()
+	router.ServeHTTP(headerRr, headerReq)
+	if headerRr.Code != http.StatusUnauthorized {
+		t.Fatalf("Expected 401 Unauthorized when passing token via Authorization header, got %d", headerRr.Code)
 	}
 }
