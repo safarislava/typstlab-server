@@ -43,6 +43,15 @@ func (r *ProjectRepository) Save(ctx context.Context, p *domain.Project) error {
 		return fmt.Errorf("failed to upsert project: %w", err)
 	}
 
+	deleteRemovedMembersQuery := `
+		DELETE FROM project_members
+		WHERE project_id = $1 AND NOT (user_id = ANY($2))
+	`
+	_, err = tx.Exec(ctx, deleteRemovedMembersQuery, p.ID(), p.UserIDs())
+	if err != nil {
+		return fmt.Errorf("failed to remove old project members: %w", err)
+	}
+
 	insertMemberQuery := `
 		INSERT INTO project_members (project_id, user_id)
 		VALUES ($1, $2)
