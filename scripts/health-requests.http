@@ -48,3 +48,34 @@ POST {{host}}/refresh
 
 ### 6. Logout User (Clears refresh cookie and invalidates session)
 POST {{host}}/logout
+
+### 7. List Project Members
+GET {{host}}/projects/{{project_id}}/members
+
+### 8. Add Member to Project
+POST {{host}}/projects/{{project_id}}/members
+Content-Type: application/json
+
+{
+  "email": "collaborator@example.com"
+}
+
+### 9. Remove Member from Project
+DELETE {{host}}/projects/{{project_id}}/members/{{user_id}}
+
+### 10. Create Project Invite
+POST {{host}}/projects/{{project_id}}/invites
+Content-Type: application/json
+
+{
+  "expires_at": "2026-10-23T12:00:00Z"
+}
+
+### 11. List Project Invites
+GET {{host}}/projects/{{project_id}}/invites
+
+### 12. Revoke Project Invite
+DELETE {{host}}/projects/{{project_id}}/invites/{{invite_id}}
+
+### 13. Accept Project Invite
+POST {{host}}/invites/{{invite_code}}/accept
