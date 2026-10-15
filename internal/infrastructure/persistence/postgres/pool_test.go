@@ -3,6 +3,8 @@ package postgres
 import (
 	"context"
 	"testing"
+
+	"github.com/jackc/pgx/v5"
 )
 
 const testValidDatabaseURL = "postgres://user:pass@localhost:5432/testdb?sslmode=disable"
@@ -48,5 +50,8 @@ func TestNewPool_ValidURL(t *testing.T) {
 	}
 	if config.HealthCheckPeriod != defaultHealthCheckPeriod {
 		t.Errorf("expected HealthCheckPeriod %v, got %v", defaultHealthCheckPeriod, config.HealthCheckPeriod)
+	}
+	if config.ConnConfig.DefaultQueryExecMode != pgx.QueryExecModeExec {
+		t.Errorf("expected DefaultQueryExecMode %v, got %v", pgx.QueryExecModeExec, config.ConnConfig.DefaultQueryExecMode)
 	}
 }
