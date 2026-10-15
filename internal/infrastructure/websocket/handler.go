@@ -310,7 +310,7 @@ func (h *Handler) handleAwarenessUpdate(
 		return fmt.Errorf("create awareness broadcast message: %w", err)
 	}
 
-	room.BroadcastExcept(client.ID(), msg)
+	room.Broadcast(msg)
 	return nil
 }
 
