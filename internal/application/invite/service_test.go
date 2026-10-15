@@ -30,49 +30,6 @@ func (m *mockProjectRepository) Save(ctx context.Context, p *domainProject.Proje
 	return nil
 }
 
-type mockInviteRepository struct {
-	saveFunc            func(ctx context.Context, inv *domainInvite.Invite) error
-	findByCodeFunc      func(ctx context.Context, code string) (*domainInvite.Invite, error)
-	findByProjectIDFunc func(ctx context.Context, projectID uuid.UUID) ([]*domainInvite.Invite, error)
-	findByIDFunc        func(ctx context.Context, id uuid.UUID) (*domainInvite.Invite, error)
-	deleteFunc          func(ctx context.Context, id uuid.UUID) error
-}
-
-func (m *mockInviteRepository) Save(ctx context.Context, inv *domainInvite.Invite) error {
-	if m.saveFunc != nil {
-		return m.saveFunc(ctx, inv)
-	}
-	return nil
-}
-
-func (m *mockInviteRepository) FindByCode(ctx context.Context, code string) (*domainInvite.Invite, error) {
-	if m.findByCodeFunc != nil {
-		return m.findByCodeFunc(ctx, code)
-	}
-	return nil, domainInvite.ErrInviteNotFound
-}
-
-func (m *mockInviteRepository) FindByProjectID(ctx context.Context, projectID uuid.UUID) ([]*domainInvite.Invite, error) {
-	if m.findByProjectIDFunc != nil {
-		return m.findByProjectIDFunc(ctx, projectID)
-	}
-	return nil, nil
-}
-
-func (m *mockInviteRepository) FindByID(ctx context.Context, id uuid.UUID) (*domainInvite.Invite, error) {
-	if m.findByIDFunc != nil {
-		return m.findByIDFunc(ctx, id)
-	}
-	return nil, domainInvite.ErrInviteNotFound
-}
-
-func (m *mockInviteRepository) Delete(ctx context.Context, id uuid.UUID) error {
-	if m.deleteFunc != nil {
-		return m.deleteFunc(ctx, id)
-	}
-	return nil
-}
-
 type inMemoryInviteRepo struct {
 	invites []*domainInvite.Invite
 }
