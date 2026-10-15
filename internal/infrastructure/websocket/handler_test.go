@@ -345,7 +345,24 @@ func TestHandler_ServeWS_CollaborationFlow(t *testing.T) {
 		t.Errorf("expected peer to receive awareness_update, got %s", peerAwareness.Type)
 	}
 
+	waitForSelfAwarenessUpdate(t, env.conn)
 	cancel()
+}
+
+func waitForSelfAwarenessUpdate(t *testing.T, conn *mockConnection) {
+	t.Helper()
+	for {
+		select {
+		case data := <-conn.writeChan:
+			var selfMsg Message
+			if err := json.Unmarshal(data, &selfMsg); err == nil && selfMsg.Type == domainCollab.MsgAwarenessUpdate {
+				return
+			}
+		case <-time.After(200 * time.Millisecond):
+			t.Fatal("timed out waiting for self awareness_update")
+			return
+		}
+	}
 }
 
 func verifyCRDTBroadcast(t *testing.T, peerMsg Message, expectedSender uuid.UUID) {
