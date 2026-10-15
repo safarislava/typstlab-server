@@ -47,8 +47,8 @@ paths:
             Set-Cookie:
               schema:
                 type: string
-                example: refresh_token=abc...; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=2592000
-              description: HttpOnly cookie containing the refresh token.
+                example: access_token=eyJ...; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=86400
+              description: HttpOnly cookies containing the access_token and refresh_token.
           content:
             application/json:
               schema:
@@ -75,7 +75,7 @@ paths:
             Set-Cookie:
               schema:
                 type: string
-              description: Renewed refresh token cookie
+              description: Renewed access_token and refresh_token cookies
           content:
             application/json:
               schema:
@@ -125,7 +125,7 @@ paths:
       tags:
         - Projects
       security:
-        - BearerAuth: []
+        - CookieAuth: []
       requestBody:
         required: true
         content:
@@ -162,7 +162,7 @@ paths:
       tags:
         - Projects
       security:
-        - BearerAuth: []
+        - CookieAuth: []
       parameters:
         - name: projectID
           in: path
@@ -190,7 +190,7 @@ paths:
       tags:
         - Files
       security:
-        - BearerAuth: []
+        - CookieAuth: []
       parameters:
         - name: projectID
           in: path
@@ -219,7 +219,7 @@ paths:
       tags:
         - Files
       security:
-        - BearerAuth: []
+        - CookieAuth: []
       parameters:
         - name: projectID
           in: path
@@ -287,7 +287,7 @@ paths:
 
         ### Protocol Requirements
         * **Mandatory WebSocket:** Requests without RFC 6455 WebSocket handshake headers (`Upgrade: websocket`, `Connection: Upgrade`, `Sec-WebSocket-Version: 13`) are strictly rejected with HTTP `426 Upgrade Required`.
-        * **Authentication:** Requires HTTP Header `Authorization: Bearer <token>` or URL query parameter `?token=<token>` (for browser clients where custom headers cannot be set in WebSocket handshake).
+        * **Authentication:** Requires `access_token` cookie (automatically sent by browser).
         * **Access Control:** User must be an authorized member/collaborator of the specified project (`403 Forbidden` if not authorized).
 
         ### JSON Message Envelope
@@ -323,7 +323,7 @@ paths:
       tags:
         - Collaboration
       security:
-        - BearerAuth: []
+        - CookieAuth: []
       parameters:
         - name: projectID
           in: path
@@ -331,10 +331,10 @@ paths:
           schema:
             type: string
             format: uuid
-        - name: token
-          in: query
+        - name: access_token
+          in: cookie
           required: false
-          description: JWT Access token (alternative to Authorization header for browser WebSocket clients).
+          description: JWT Access token cookie automatically sent by browser clients.
           schema:
             type: string
         - name: Upgrade
@@ -404,7 +404,7 @@ paths:
       tags:
         - Files
       security:
-        - BearerAuth: []
+        - CookieAuth: []
       parameters:
         - name: projectID
           in: path
@@ -436,7 +436,7 @@ paths:
       tags:
         - Files
       security:
-        - BearerAuth: []
+        - CookieAuth: []
       parameters:
         - name: fileID
           in: path
@@ -466,7 +466,7 @@ paths:
       tags:
         - Files
       security:
-        - BearerAuth: []
+        - CookieAuth: []
       parameters:
         - name: fileID
           in: path
@@ -496,7 +496,7 @@ paths:
       tags:
         - Files
       security:
-        - BearerAuth: []
+        - CookieAuth: []
       parameters:
         - name: fileID
           in: path
@@ -532,10 +532,11 @@ paths:
 
 components:
   securitySchemes:
-    BearerAuth:
-      type: http
-      scheme: bearer
-      bearerFormat: JWT
+    CookieAuth:
+      type: apiKey
+      in: cookie
+      name: access_token
+      description: JWT Access token stored in an HttpOnly, Secure cookie.
 
   schemas:
     RegisterRequest:

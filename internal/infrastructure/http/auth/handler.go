@@ -9,7 +9,12 @@ import (
 	tokenDomain "github.com/safarislava/typstlab-server/internal/domain/token"
 )
 
-const refreshTokenCookieName = "refresh_token"
+const (
+	accessTokenCookieName  = "access_token"
+	refreshTokenCookieName = "refresh_token"
+	accessTokenMaxAge      = 24 * 3600      // 24 hours
+	refreshTokenMaxAge     = 30 * 24 * 3600 // 30 days
+)
 
 type Service interface {
 	Login(ctx context.Context, req auth.LoginRequest) (*auth.LoginResponse, error)
@@ -54,7 +59,8 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.setSessionCookie(w, resp.RefreshToken.Token().Value(), 30*24*3600)
+	h.setCookie(w, accessTokenCookieName, resp.AccessToken.Value(), accessTokenMaxAge)
+	h.setCookie(w, refreshTokenCookieName, resp.RefreshToken.Token().Value(), refreshTokenMaxAge)
 	h.writeJSON(w, http.StatusOK, JSONLoginResponse{Token: resp.AccessToken.Value()})
 }
 
@@ -79,7 +85,8 @@ func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.setSessionCookie(w, resp.RefreshToken.Token().Value(), 30*24*3600)
+	h.setCookie(w, accessTokenCookieName, resp.AccessToken.Value(), accessTokenMaxAge)
+	h.setCookie(w, refreshTokenCookieName, resp.RefreshToken.Token().Value(), refreshTokenMaxAge)
 	h.writeJSON(w, http.StatusOK, JSONLoginResponse{Token: resp.AccessToken.Value()})
 }
 
@@ -91,13 +98,14 @@ func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	h.setSessionCookie(w, "", -1)
+	h.setCookie(w, accessTokenCookieName, "", -1)
+	h.setCookie(w, refreshTokenCookieName, "", -1)
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (h *Handler) setSessionCookie(w http.ResponseWriter, value string, maxAge int) {
+func (h *Handler) setCookie(w http.ResponseWriter, name, value string, maxAge int) {
 	http.SetCookie(w, &http.Cookie{
-		Name:     refreshTokenCookieName,
+		Name:     name,
 		Value:    value,
 		Path:     "/",
 		HttpOnly: true,

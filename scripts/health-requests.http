@@ -29,9 +29,8 @@ Content-Type: application/json
     }
 %}
 
-### 4. Create Project (Protected - requires Bearer Token)
+### 4. Create Project (Protected - uses access_token cookie)
 POST {{host}}/projects
-Authorization: Bearer {{auth_token}}
 Content-Type: application/json
 
 {
