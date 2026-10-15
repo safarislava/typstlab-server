@@ -10,8 +10,7 @@ Content-Type: application/json
 
 {
   "email": "user@example.com",
-  "password": "securepassword",
-  "role": "user"
+  "password": "securepassword"
 }
 
 ### 3. Login User (Obtain tokens and sets Cookie)

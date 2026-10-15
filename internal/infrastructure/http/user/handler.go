@@ -25,7 +25,6 @@ func NewHandler(userService Service) *Handler {
 type jsonRegisterRequest struct {
 	Email    string `json:"email"`
 	Password string `json:"password"`
-	Role     string `json:"role"`
 }
 
 type jsonRegisterResponse struct {
@@ -44,7 +43,6 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	req := user.RegisterRequest{
 		Email:    jsonReq.Email,
 		Password: jsonReq.Password,
-		Role:     jsonReq.Role,
 	}
 
 	resp, err := h.userService.Register(r.Context(), req)

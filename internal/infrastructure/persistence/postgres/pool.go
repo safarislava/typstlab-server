@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -28,6 +29,7 @@ func NewPool(ctx context.Context, databaseURL string) (*pgxpool.Pool, error) {
 	config.MaxConnLifetime = defaultMaxConnLifetime
 	config.MaxConnIdleTime = defaultMaxConnIdleTime
 	config.HealthCheckPeriod = defaultHealthCheckPeriod
+	config.ConnConfig.DefaultQueryExecMode = pgx.QueryExecModeExec
 
 	pool, err := pgxpool.NewWithConfig(ctx, config)
 	if err != nil {
