@@ -334,3 +334,223 @@ func TestHandler_RemoveMember(t *testing.T) {
 		t.Fatalf("Expected status 204, got %d", rr.Code)
 	}
 }
+
+func TestHandler_ListMembers_Errors(t *testing.T) {
+	t.Parallel()
+
+	projectID := uuid.New()
+	p, _ := domain.NewProject(projectID, []uuid.UUID{uuid.New()}, "Members Proj", time.Now())
+
+	t.Run("MissingContext", func(t *testing.T) {
+		t.Parallel()
+		handler := NewHandler(&mockProjectService{})
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/projects/123/members", nil)
+		rr := httptest.NewRecorder()
+		handler.ListMembers(rr, req)
+		if rr.Code != http.StatusInternalServerError {
+			t.Errorf("Expected 500, got %d", rr.Code)
+		}
+	})
+
+	t.Run("ServiceError", func(t *testing.T) {
+		t.Parallel()
+		svc := &mockProjectService{
+			listMembersFunc: func(ctx context.Context, pid uuid.UUID) ([]projectApp.MemberDTO, error) {
+				return nil, errors.New("list failed")
+			},
+		}
+		handler := NewHandler(svc)
+		ctx := middleware.WithProject(context.Background(), p)
+		req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/projects/"+projectID.String()+"/members", nil)
+		rr := httptest.NewRecorder()
+		handler.ListMembers(rr, req)
+		if rr.Code != http.StatusInternalServerError {
+			t.Errorf("Expected 500, got %d", rr.Code)
+		}
+	})
+}
+
+func TestHandler_AddMember_ValidationErrors(t *testing.T) {
+	t.Parallel()
+
+	projectID := uuid.New()
+	p, _ := domain.NewProject(projectID, []uuid.UUID{uuid.New()}, "Add Member Proj", time.Now())
+
+	t.Run("MissingContext", func(t *testing.T) {
+		t.Parallel()
+		handler := NewHandler(&mockProjectService{})
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/members", nil)
+		rr := httptest.NewRecorder()
+		handler.AddMember(rr, req)
+		if rr.Code != http.StatusInternalServerError {
+			t.Errorf("Expected 500, got %d", rr.Code)
+		}
+	})
+
+	t.Run("InvalidJSON", func(t *testing.T) {
+		t.Parallel()
+		handler := NewHandler(&mockProjectService{})
+		ctx := middleware.WithProject(context.Background(), p)
+		req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/members", bytes.NewBufferString("{bad-json"))
+		rr := httptest.NewRecorder()
+		handler.AddMember(rr, req)
+		if rr.Code != http.StatusBadRequest {
+			t.Errorf("Expected 400, got %d", rr.Code)
+		}
+	})
+
+	t.Run("EmptyEmail", func(t *testing.T) {
+		t.Parallel()
+		handler := NewHandler(&mockProjectService{})
+		ctx := middleware.WithProject(context.Background(), p)
+		req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/members", bytes.NewBufferString(`{"email":""}`))
+		rr := httptest.NewRecorder()
+		handler.AddMember(rr, req)
+		if rr.Code != http.StatusBadRequest {
+			t.Errorf("Expected 400, got %d", rr.Code)
+		}
+	})
+}
+
+func TestHandler_AddMember_ServiceErrors(t *testing.T) {
+	t.Parallel()
+
+	projectID := uuid.New()
+	p, _ := domain.NewProject(projectID, []uuid.UUID{uuid.New()}, "Add Member Proj", time.Now())
+
+	t.Run("AlreadyMember", func(t *testing.T) {
+		t.Parallel()
+		svc := &mockProjectService{
+			addMemberFunc: func(ctx context.Context, pid uuid.UUID, email string) (*projectApp.MemberDTO, error) {
+				return nil, domain.ErrUserAlreadyMember
+			},
+		}
+		handler := NewHandler(svc)
+		ctx := middleware.WithProject(context.Background(), p)
+		req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/members", bytes.NewBufferString(`{"email":"dup@example.com"}`))
+		rr := httptest.NewRecorder()
+		handler.AddMember(rr, req)
+		if rr.Code != http.StatusConflict {
+			t.Errorf("Expected 409, got %d", rr.Code)
+		}
+	})
+
+	t.Run("GenericError", func(t *testing.T) {
+		t.Parallel()
+		svc := &mockProjectService{
+			addMemberFunc: func(ctx context.Context, pid uuid.UUID, email string) (*projectApp.MemberDTO, error) {
+				return nil, errors.New("cannot add")
+			},
+		}
+		handler := NewHandler(svc)
+		ctx := middleware.WithProject(context.Background(), p)
+		req := httptest.NewRequestWithContext(ctx, http.MethodPost, "/members", bytes.NewBufferString(`{"email":"test@example.com"}`))
+		rr := httptest.NewRecorder()
+		handler.AddMember(rr, req)
+		if rr.Code != http.StatusBadRequest {
+			t.Errorf("Expected 400, got %d", rr.Code)
+		}
+	})
+}
+
+func TestHandler_RemoveMember_ValidationErrors(t *testing.T) {
+	t.Parallel()
+
+	projectID := uuid.New()
+	p, _ := domain.NewProject(projectID, []uuid.UUID{uuid.New()}, "Remove Proj", time.Now())
+
+	t.Run("MissingContext", func(t *testing.T) {
+		t.Parallel()
+		handler := NewHandler(&mockProjectService{})
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodDelete, "/members", nil)
+		rr := httptest.NewRecorder()
+		handler.RemoveMember(rr, req)
+		if rr.Code != http.StatusInternalServerError {
+			t.Errorf("Expected 500, got %d", rr.Code)
+		}
+	})
+
+	t.Run("InvalidUserID", func(t *testing.T) {
+		t.Parallel()
+		handler := NewHandler(&mockProjectService{})
+		r := chi.NewRouter()
+		r.Delete("/members/{userID}", handler.RemoveMember)
+		ctx := middleware.WithProject(context.Background(), p)
+		req := httptest.NewRequestWithContext(ctx, http.MethodDelete, "/members/invalid-uuid", nil)
+		rr := httptest.NewRecorder()
+		r.ServeHTTP(rr, req)
+		if rr.Code != http.StatusBadRequest {
+			t.Errorf("Expected 400, got %d", rr.Code)
+		}
+	})
+}
+
+func TestHandler_RemoveMember_DomainErrors(t *testing.T) {
+	t.Parallel()
+
+	projectID := uuid.New()
+	p, _ := domain.NewProject(projectID, []uuid.UUID{uuid.New()}, "Remove Proj", time.Now())
+	userID := uuid.New()
+
+	t.Run("LastUser", func(t *testing.T) {
+		t.Parallel()
+		svc := &mockProjectService{
+			removeMemberFunc: func(ctx context.Context, pid, uid uuid.UUID) error {
+				return domain.ErrNoUsers
+			},
+		}
+		handler := NewHandler(svc)
+		r := chi.NewRouter()
+		r.Delete("/members/{userID}", handler.RemoveMember)
+		ctx := middleware.WithProject(context.Background(), p)
+		req := httptest.NewRequestWithContext(ctx, http.MethodDelete, "/members/"+userID.String(), nil)
+		rr := httptest.NewRecorder()
+		r.ServeHTTP(rr, req)
+		if rr.Code != http.StatusBadRequest {
+			t.Errorf("Expected 400, got %d", rr.Code)
+		}
+	})
+
+	t.Run("UserNotInProject", func(t *testing.T) {
+		t.Parallel()
+		svc := &mockProjectService{
+			removeMemberFunc: func(ctx context.Context, pid, uid uuid.UUID) error {
+				return domain.ErrUserNotInProject
+			},
+		}
+		handler := NewHandler(svc)
+		r := chi.NewRouter()
+		r.Delete("/members/{userID}", handler.RemoveMember)
+		ctx := middleware.WithProject(context.Background(), p)
+		req := httptest.NewRequestWithContext(ctx, http.MethodDelete, "/members/"+userID.String(), nil)
+		rr := httptest.NewRecorder()
+		r.ServeHTTP(rr, req)
+		if rr.Code != http.StatusNotFound {
+			t.Errorf("Expected 404, got %d", rr.Code)
+		}
+	})
+}
+
+func TestHandler_RemoveMember_GenericError(t *testing.T) {
+	t.Parallel()
+
+	projectID := uuid.New()
+	p, _ := domain.NewProject(projectID, []uuid.UUID{uuid.New()}, "Remove Proj", time.Now())
+	userID := uuid.New()
+
+	svc := &mockProjectService{
+		removeMemberFunc: func(ctx context.Context, pid, uid uuid.UUID) error {
+			return errors.New("cannot remove")
+		},
+	}
+	handler := NewHandler(svc)
+	r := chi.NewRouter()
+	r.Delete("/members/{userID}", handler.RemoveMember)
+	ctx := middleware.WithProject(context.Background(), p)
+	req := httptest.NewRequestWithContext(ctx, http.MethodDelete, "/members/"+userID.String(), nil)
+	rr := httptest.NewRecorder()
+	r.ServeHTTP(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Errorf("Expected 400, got %d", rr.Code)
+	}
+}
