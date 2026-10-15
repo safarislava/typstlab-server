@@ -287,7 +287,7 @@ paths:
 
         ### Protocol Requirements
         * **Mandatory WebSocket:** Requests without RFC 6455 WebSocket handshake headers (`Upgrade: websocket`, `Connection: Upgrade`, `Sec-WebSocket-Version: 13`) are strictly rejected with HTTP `426 Upgrade Required`.
-        * **Strict Authentication:** Requires HTTP Header `Authorization: Bearer <token>`. Passing tokens via URL query parameters (`?token=...`) is strictly rejected with HTTP `401 Unauthorized`.
+        * **Authentication:** Requires HTTP Header `Authorization: Bearer <token>` or URL query parameter `?token=<token>` (for browser clients where custom headers cannot be set in WebSocket handshake).
         * **Access Control:** User must be an authorized member/collaborator of the specified project (`403 Forbidden` if not authorized).
 
         ### JSON Message Envelope
@@ -331,6 +331,12 @@ paths:
           schema:
             type: string
             format: uuid
+        - name: token
+          in: query
+          required: false
+          description: JWT Access token (alternative to Authorization header for browser WebSocket clients).
+          schema:
+            type: string
         - name: Upgrade
           in: header
           required: true

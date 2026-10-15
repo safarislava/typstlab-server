@@ -33,21 +33,26 @@ func NewAuthMiddleware(authService AuthService) *AuthMiddleware {
 	}
 }
 
+func extractToken(r *http.Request) string {
+	authHeader := r.Header.Get("Authorization")
+	if authHeader != "" {
+		parts := strings.Split(authHeader, " ")
+		if len(parts) == 2 && strings.EqualFold(parts[0], "bearer") {
+			return parts[1]
+		}
+	}
+	return r.URL.Query().Get("token")
+}
+
 func (m *AuthMiddleware) Authenticate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		authHeader := r.Header.Get("Authorization")
-		if authHeader == "" {
+		tokenString := extractToken(r)
+		if tokenString == "" {
 			next.ServeHTTP(w, r)
 			return
 		}
 
-		parts := strings.Split(authHeader, " ")
-		if len(parts) != 2 || !strings.EqualFold(parts[0], "bearer") {
-			next.ServeHTTP(w, r)
-			return
-		}
-
-		t, err := domainToken.NewToken(parts[1])
+		t, err := domainToken.NewToken(tokenString)
 		if err != nil {
 			next.ServeHTTP(w, r)
 			return

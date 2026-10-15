@@ -139,7 +139,7 @@ sequenceDiagram
 ### 5.1. Подключение и требования протокола
 
 * **Эндпоинт:** `GET /ws/projects/{projectID}`
-* **Аутентификация:** Строго через HTTP-заголовок `Authorization: Bearer <token>`. Передача токена в query-параметрах (`?token=...`) запрещена и возвращает `401 Unauthorized`.
+* **Аутентификация:** Через HTTP-заголовок `Authorization: Bearer <token>` либо query-параметр `?token=<token>` (для браузерных клиентов, где нельзя установить кастомный заголовок при WebSocket Upgrade).
 * **Обязательность WebSocket (RFC 6455):** Клиенты без заголовков `Upgrade: websocket`, `Connection: Upgrade`, `Sec-WebSocket-Version: 13` строго отклоняются со статусом **`426 Upgrade Required`**.
 
 ### 5.2. Формат конверта сообщений

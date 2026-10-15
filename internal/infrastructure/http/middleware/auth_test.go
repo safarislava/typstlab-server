@@ -122,6 +122,40 @@ func TestAuthMiddleware_Authenticate_ValidToken(t *testing.T) {
 	}
 }
 
+func TestAuthMiddleware_Authenticate_ValidTokenInQueryParam(t *testing.T) {
+	t.Parallel()
+
+	userID := uuid.New()
+	role := domainUser.RoleUser
+
+	authSvc := &mockAuthService{
+		authorizeFunc: func(t token.Token) (uuid.UUID, domainUser.Role, error) {
+			if t.Value() == "valid-query-token" {
+				return userID, role, nil
+			}
+			return uuid.Nil, "", errors.New("invalid token")
+		},
+	}
+	mw := NewAuthMiddleware(authSvc)
+
+	var ctxUserID uuid.UUID
+	var ctxRole domainUser.Role
+	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctxUserID, _ = r.Context().Value(userIDKey).(uuid.UUID)
+		ctxRole, _ = r.Context().Value(roleKey).(domainUser.Role)
+		w.WriteHeader(http.StatusOK)
+	})
+
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/ws/projects/123?token=valid-query-token", http.NoBody)
+	mw.Authenticate(nextHandler).ServeHTTP(httptest.NewRecorder(), req)
+	if ctxUserID != userID {
+		t.Errorf("Expected userID context %s, got %s", userID, ctxUserID)
+	}
+	if ctxRole != role {
+		t.Errorf("Expected role context %s, got %s", role, ctxRole)
+	}
+}
+
 func TestRequireAuthenticated(t *testing.T) {
 	t.Parallel()
 
