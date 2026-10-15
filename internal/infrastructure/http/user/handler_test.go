@@ -52,7 +52,7 @@ func TestUserHandler_Register(t *testing.T) {
 	}
 
 	// Case 2: Success
-	body := `{"email":"new@example.com","password":"password","role":"user"}`
+	body := `{"email":"new@example.com","password":"password"}`
 	req = httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/register", bytes.NewBufferString(body))
 	rr = httptest.NewRecorder()
 	handler.Register(rr, req)

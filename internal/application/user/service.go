@@ -12,7 +12,6 @@ import (
 type RegisterRequest struct {
 	Email    string
 	Password string
-	Role     string
 }
 
 type RegisterResponse struct {
@@ -55,12 +54,7 @@ func (s *Service) Register(ctx context.Context, req RegisterRequest) (*RegisterR
 		return nil, fmt.Errorf("failed to hash password: %w", err)
 	}
 
-	role := domain.RoleUser
-	if req.Role != "" {
-		role = domain.Role(req.Role)
-	}
-
-	u, err := domain.NewUser(uuid.New(), req.Email, hashedPassword, role)
+	u, err := domain.NewUser(uuid.New(), req.Email, hashedPassword, domain.RoleUser)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create user: %w", err)
 	}

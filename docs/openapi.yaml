@@ -537,7 +537,6 @@ components:
       required:
         - email
         - password
-        - role
       properties:
         email:
           type: string
@@ -547,10 +546,6 @@ components:
           type: string
           format: password
           example: securepassword123
-        role:
-          type: string
-          enum: [user, admin]
-          example: user
 
     RegisterResponse:
       type: object
