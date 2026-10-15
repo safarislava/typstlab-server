@@ -57,6 +57,30 @@ func TestProject_Collaborators(t *testing.T) {
 	if err := p.AddUser(uuid.Nil); err == nil {
 		t.Error("Expected error when adding Nil UUID, got nil")
 	}
+
+	// Remove non-existent user
+	nonExistent := uuid.New()
+	if err := p.RemoveUser(nonExistent); !errors.Is(err, ErrUserNotInProject) {
+		t.Errorf("Expected ErrUserNotInProject, got %v", err)
+	}
+
+	// Remove Nil user
+	if err := p.RemoveUser(uuid.Nil); !errors.Is(err, ErrEmptyUserID) {
+		t.Errorf("Expected ErrEmptyUserID, got %v", err)
+	}
+
+	// Remove userID2 successfully
+	if err := p.RemoveUser(userID2); err != nil {
+		t.Fatalf("Failed to remove user: %v", err)
+	}
+	if p.HasUser(userID2) {
+		t.Error("Expected project to not have userID2 after RemoveUser")
+	}
+
+	// Cannot remove last remaining user
+	if err := p.RemoveUser(userID1); !errors.Is(err, ErrNoUsers) {
+		t.Errorf("Expected ErrNoUsers when removing last user, got %v", err)
+	}
 }
 
 func TestNewProject_ValidationErrors(t *testing.T) {

@@ -37,6 +37,22 @@ func (p *Project) AddUser(userID uuid.UUID) error {
 	return nil
 }
 
+func (p *Project) RemoveUser(userID uuid.UUID) error {
+	if userID == uuid.Nil {
+		return ErrEmptyUserID
+	}
+	if !p.HasUser(userID) {
+		return ErrUserNotInProject
+	}
+	if len(p.userIDs) <= 1 {
+		return ErrNoUsers
+	}
+	p.userIDs = slices.DeleteFunc(p.userIDs, func(id uuid.UUID) bool {
+		return id == userID
+	})
+	return nil
+}
+
 func (p *Project) Name() string {
 	return p.name
 }
