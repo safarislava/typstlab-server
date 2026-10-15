@@ -17,6 +17,7 @@ import (
 	fileApp "github.com/safarislava/typstlab-server/internal/application/file"
 	binaryFile "github.com/safarislava/typstlab-server/internal/application/file/binary"
 	typstFile "github.com/safarislava/typstlab-server/internal/application/file/typst"
+	inviteApp "github.com/safarislava/typstlab-server/internal/application/invite"
 	metadataApp "github.com/safarislava/typstlab-server/internal/application/metadata"
 	projectApp "github.com/safarislava/typstlab-server/internal/application/project"
 	sessionApp "github.com/safarislava/typstlab-server/internal/application/session"
@@ -30,6 +31,7 @@ import (
 	"github.com/safarislava/typstlab-server/internal/infrastructure/crdt"
 	authHttp "github.com/safarislava/typstlab-server/internal/infrastructure/http/auth"
 	fileHttp "github.com/safarislava/typstlab-server/internal/infrastructure/http/file"
+	inviteHttp "github.com/safarislava/typstlab-server/internal/infrastructure/http/invite"
 	middlewareHttp "github.com/safarislava/typstlab-server/internal/infrastructure/http/middleware"
 	projectHttp "github.com/safarislava/typstlab-server/internal/infrastructure/http/project"
 	userHttp "github.com/safarislava/typstlab-server/internal/infrastructure/http/user"
@@ -89,6 +91,9 @@ type Container struct {
 	projectRepo     projectApp.Repository
 	projectRepoOnce sync.Once
 
+	inviteRepo     inviteApp.Repository
+	inviteRepoOnce sync.Once
+
 	fileRepo     FileRepository
 	fileRepoOnce sync.Once
 
@@ -120,6 +125,9 @@ type Container struct {
 
 	projectService     *projectApp.Service
 	projectServiceOnce sync.Once
+
+	inviteService     *inviteApp.Service
+	inviteServiceOnce sync.Once
 
 	typstFileService     *typstFile.Service
 	typstFileServiceOnce sync.Once
@@ -157,6 +165,9 @@ type Container struct {
 	// HTTP Handlers & Middlewares
 	projectHandler     *projectHttp.Handler
 	projectHandlerOnce sync.Once
+
+	inviteHandler     *inviteHttp.Handler
+	inviteHandlerOnce sync.Once
 
 	fileHandler     *fileHttp.Handler
 	fileHandlerOnce sync.Once
@@ -257,6 +268,25 @@ func (c *Container) buildProjectRepo() projectApp.Repository {
 		}
 	}
 	return memory.NewMemoryProjectRepository()
+}
+
+// InviteRepo lazily initializes and returns the project invite repository.
+func (c *Container) InviteRepo() inviteApp.Repository {
+	c.inviteRepoOnce.Do(func() {
+		if c.inviteRepo == nil {
+			c.inviteRepo = c.buildInviteRepo()
+		}
+	})
+	return c.inviteRepo
+}
+
+func (c *Container) buildInviteRepo() inviteApp.Repository {
+	if !c.useMemory {
+		if pool := c.Pool(); pool != nil {
+			return postgres.NewInviteRepository(pool)
+		}
+	}
+	return memory.NewMemoryInviteRepository()
 }
 
 // FileRepo lazily initializes and returns the composite or in-memory file repository.
@@ -362,9 +392,17 @@ func (c *Container) EntryService() *entryApp.Service {
 // ProjectService lazily initializes and returns the project application service.
 func (c *Container) ProjectService() *projectApp.Service {
 	c.projectServiceOnce.Do(func() {
-		c.projectService = projectApp.NewService(c.ProjectRepo())
+		c.projectService = projectApp.NewService(c.ProjectRepo(), c.UserService())
 	})
 	return c.projectService
+}
+
+// InviteService lazily initializes and returns the invite application service.
+func (c *Container) InviteService() *inviteApp.Service {
+	c.inviteServiceOnce.Do(func() {
+		c.inviteService = inviteApp.NewService(c.ProjectRepo(), c.InviteRepo())
+	})
+	return c.inviteService
 }
 
 // TypstFileService lazily initializes and returns the typst file application service.
@@ -466,6 +504,14 @@ func (c *Container) ProjectHandler() *projectHttp.Handler {
 		c.projectHandler = projectHttp.NewHandler(c.ProjectService())
 	})
 	return c.projectHandler
+}
+
+// InviteHandler lazily initializes and returns the invite HTTP handler.
+func (c *Container) InviteHandler() *inviteHttp.Handler {
+	c.inviteHandlerOnce.Do(func() {
+		c.inviteHandler = inviteHttp.NewHandler(c.InviteService())
+	})
+	return c.inviteHandler
 }
 
 // FileHandler lazily initializes and returns the file HTTP handler.
@@ -574,11 +620,45 @@ func (c *Container) Router() *chi.Mux {
 	return c.router
 }
 
+func (c *Container) registerProtectedRoutes(r chi.Router) {
+	projectHandler := c.ProjectHandler()
+	inviteHandler := c.InviteHandler()
+	fileHandler := c.FileHandler()
+	accessMiddleware := c.AccessMiddleware()
+
+	r.Post("/projects", projectHandler.Create)
+	r.Post("/invites/{code}/accept", inviteHandler.AcceptInvite)
+
+	r.Route("/projects/{projectID}", func(r chi.Router) {
+		r.Use(accessMiddleware.ProjectAccess)
+		r.Get("/", projectHandler.Get)
+		r.Get("/members", projectHandler.ListMembers)
+		r.Post("/members", projectHandler.AddMember)
+		r.Delete("/members/{userID}", projectHandler.RemoveMember)
+		r.Get("/invites", inviteHandler.ListInvites)
+		r.Post("/invites", inviteHandler.CreateInvite)
+		r.Delete("/invites/{inviteID}", inviteHandler.RevokeInvite)
+		r.Post("/files", fileHandler.UploadFile)
+		r.Get("/files", fileHandler.ListProjectFiles)
+		r.With(accessMiddleware.FileAccess).Delete("/files/{fileID}", fileHandler.DeleteFile)
+	})
+
+	r.Route("/files", func(r chi.Router) {
+		r.Route("/typst/{fileID}", func(r chi.Router) {
+			r.Use(accessMiddleware.FileAccess)
+			r.Get("/", fileHandler.GetTypstFile)
+		})
+		r.Route("/binary/{fileID}", func(r chi.Router) {
+			r.Use(accessMiddleware.FileAccess)
+			r.Get("/", fileHandler.GetBinaryFile)
+			r.Get("/raw", fileHandler.GetBinaryFileRaw)
+		})
+	})
+}
+
 func (c *Container) registerRoutes(r *chi.Mux) {
 	userHandler := c.UserHandler()
 	authHandler := c.AuthHandler()
-	projectHandler := c.ProjectHandler()
-	fileHandler := c.FileHandler()
 	wsHandler := c.WSHandler()
 	authMiddleware := c.AuthMiddleware()
 	accessMiddleware := c.AccessMiddleware()
@@ -602,29 +682,9 @@ func (c *Container) registerRoutes(r *chi.Mux) {
 	r.Group(func(r chi.Router) {
 		r.Use(authMiddleware.Authenticate)
 		r.Use(middlewareHttp.RequireAuthenticated)
-		r.Use(middlewareHttp.RequireRole(user.RoleUser))
+		r.Use(middlewareHttp.RequireRole(user.RoleUser, user.RoleAdmin))
 
-		r.Post("/projects", projectHandler.Create)
-
-		r.Route("/projects/{projectID}", func(r chi.Router) {
-			r.Use(accessMiddleware.ProjectAccess)
-			r.Get("/", projectHandler.Get)
-			r.Post("/files", fileHandler.UploadFile)
-			r.Get("/files", fileHandler.ListProjectFiles)
-			r.With(accessMiddleware.FileAccess).Delete("/files/{fileID}", fileHandler.DeleteFile)
-		})
-
-		r.Route("/files", func(r chi.Router) {
-			r.Route("/typst/{fileID}", func(r chi.Router) {
-				r.Use(accessMiddleware.FileAccess)
-				r.Get("/", fileHandler.GetTypstFile)
-			})
-			r.Route("/binary/{fileID}", func(r chi.Router) {
-				r.Use(accessMiddleware.FileAccess)
-				r.Get("/", fileHandler.GetBinaryFile)
-				r.Get("/raw", fileHandler.GetBinaryFileRaw)
-			})
-		})
+		c.registerProtectedRoutes(r)
 	})
 
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
