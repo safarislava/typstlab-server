@@ -73,6 +73,47 @@ func (m *mockInviteRepository) Delete(ctx context.Context, id uuid.UUID) error {
 	return nil
 }
 
+type inMemoryInviteRepo struct {
+	invites []*domainInvite.Invite
+}
+
+func (r *inMemoryInviteRepo) Save(_ context.Context, inv *domainInvite.Invite) error {
+	r.invites = append(r.invites, inv)
+	return nil
+}
+
+func (r *inMemoryInviteRepo) FindByCode(_ context.Context, code string) (*domainInvite.Invite, error) {
+	for _, inv := range r.invites {
+		if inv.Code() == code {
+			return inv, nil
+		}
+	}
+	return nil, domainInvite.ErrInviteNotFound
+}
+
+func (r *inMemoryInviteRepo) FindByProjectID(_ context.Context, _ uuid.UUID) ([]*domainInvite.Invite, error) {
+	return r.invites, nil
+}
+
+func (r *inMemoryInviteRepo) FindByID(_ context.Context, id uuid.UUID) (*domainInvite.Invite, error) {
+	for _, inv := range r.invites {
+		if inv.ID() == id {
+			return inv, nil
+		}
+	}
+	return nil, domainInvite.ErrInviteNotFound
+}
+
+func (r *inMemoryInviteRepo) Delete(_ context.Context, id uuid.UUID) error {
+	for i, inv := range r.invites {
+		if inv.ID() == id {
+			r.invites = append(r.invites[:i], r.invites[i+1:]...)
+			return nil
+		}
+	}
+	return domainInvite.ErrInviteNotFound
+}
+
 func TestInviteService_Flow(t *testing.T) {
 	t.Parallel()
 
@@ -80,42 +121,7 @@ func TestInviteService_Flow(t *testing.T) {
 	joinerID := uuid.New()
 	p, _ := domainProject.NewProject(uuid.New(), []uuid.UUID{ownerID}, "Invite Project", time.Now())
 
-	var storedInvites []*domainInvite.Invite
-	inviteRepo := &mockInviteRepository{
-		saveFunc: func(ctx context.Context, inv *domainInvite.Invite) error {
-			storedInvites = append(storedInvites, inv)
-			return nil
-		},
-		findByProjectIDFunc: func(ctx context.Context, projectID uuid.UUID) ([]*domainInvite.Invite, error) {
-			return storedInvites, nil
-		},
-		findByCodeFunc: func(ctx context.Context, code string) (*domainInvite.Invite, error) {
-			for _, inv := range storedInvites {
-				if inv.Code() == code {
-					return inv, nil
-				}
-			}
-			return nil, domainInvite.ErrInviteNotFound
-		},
-		findByIDFunc: func(ctx context.Context, id uuid.UUID) (*domainInvite.Invite, error) {
-			for _, inv := range storedInvites {
-				if inv.ID() == id {
-					return inv, nil
-				}
-			}
-			return nil, domainInvite.ErrInviteNotFound
-		},
-		deleteFunc: func(ctx context.Context, id uuid.UUID) error {
-			for i, inv := range storedInvites {
-				if inv.ID() == id {
-					storedInvites = append(storedInvites[:i], storedInvites[i+1:]...)
-					return nil
-				}
-			}
-			return domainInvite.ErrInviteNotFound
-		},
-	}
-
+	inviteRepo := &inMemoryInviteRepo{}
 	projectRepo := &mockProjectRepository{
 		findByIDFunc: func(ctx context.Context, id uuid.UUID) (*domainProject.Project, error) {
 			if id == p.ID() {
@@ -155,7 +161,7 @@ func TestInviteService_Flow(t *testing.T) {
 	if err := svc.RevokeInvite(context.Background(), p.ID(), inv.ID()); err != nil {
 		t.Fatalf("Failed to revoke invite: %v", err)
 	}
-	if len(storedInvites) != 0 {
+	if len(inviteRepo.invites) != 0 {
 		t.Error("Expected invite to be revoked")
 	}
 }

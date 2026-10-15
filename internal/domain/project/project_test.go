@@ -33,7 +33,7 @@ func TestNewProject_Success(t *testing.T) {
 	}
 }
 
-func TestProject_Collaborators(t *testing.T) {
+func TestProject_AddUser(t *testing.T) {
 	t.Parallel()
 
 	userID1 := uuid.New()
@@ -57,6 +57,14 @@ func TestProject_Collaborators(t *testing.T) {
 	if err := p.AddUser(uuid.Nil); err == nil {
 		t.Error("Expected error when adding Nil UUID, got nil")
 	}
+}
+
+func TestProject_RemoveUser(t *testing.T) {
+	t.Parallel()
+
+	userID1 := uuid.New()
+	userID2 := uuid.New()
+	p, _ := NewProject(uuid.New(), []uuid.UUID{userID1, userID2}, "Collab Proj", time.Now())
 
 	// Remove non-existent user
 	nonExistent := uuid.New()

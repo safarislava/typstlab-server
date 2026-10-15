@@ -8,13 +8,15 @@ import (
 	"github.com/google/uuid"
 )
 
-func TestInvite(t *testing.T) {
+const testInviteCode = "test-code-123"
+
+func TestInvite_Properties(t *testing.T) {
 	t.Parallel()
 
 	inviteID := uuid.New()
 	projectID := uuid.New()
 	createdBy := uuid.New()
-	code := "test-code-123"
+	code := testInviteCode
 	now := time.Now()
 	expiresAt := now.Add(24 * time.Hour)
 
@@ -36,8 +38,18 @@ func TestInvite(t *testing.T) {
 	if !inv.IsExpired(now.Add(25 * time.Hour)) {
 		t.Error("Invite should be expired after expiration time")
 	}
+}
 
-	// Validation tests
+func TestNewInvite_Validation(t *testing.T) {
+	t.Parallel()
+
+	inviteID := uuid.New()
+	projectID := uuid.New()
+	createdBy := uuid.New()
+	code := testInviteCode
+	now := time.Now()
+	expiresAt := now.Add(24 * time.Hour)
+
 	tests := []struct {
 		name      string
 		id        uuid.UUID
