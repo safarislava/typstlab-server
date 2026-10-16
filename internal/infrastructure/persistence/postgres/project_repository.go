@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	domain "github.com/safarislava/typstlab-server/internal/domain/project"
@@ -43,31 +44,62 @@ func (r *ProjectRepository) Save(ctx context.Context, p *domain.Project) error {
 		return fmt.Errorf("failed to upsert project: %w", err)
 	}
 
-	deleteRemovedMembersQuery := `
-		DELETE FROM project_members
-		WHERE project_id = $1 AND NOT (user_id = ANY($2))
-	`
-	_, err = tx.Exec(ctx, deleteRemovedMembersQuery, p.ID(), p.UserIDs())
-	if err != nil {
-		return fmt.Errorf("failed to remove old project members: %w", err)
-	}
-
-	insertMemberQuery := `
-		INSERT INTO project_members (project_id, user_id)
-		VALUES ($1, $2)
-		ON CONFLICT (project_id, user_id) DO NOTHING
-	`
-	for _, uid := range p.UserIDs() {
-		_, err = tx.Exec(ctx, insertMemberQuery, p.ID(), uid)
-		if err != nil {
-			return fmt.Errorf("failed to insert project member %s: %w", uid, err)
-		}
+	if err := r.syncMembers(ctx, tx, p.ID(), p.UserIDs()); err != nil {
+		return err
 	}
 
 	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("failed to commit project transaction: %w", err)
 	}
 
+	return nil
+}
+
+func (r *ProjectRepository) syncMembers(ctx context.Context, tx pgx.Tx, projectID uuid.UUID, userIDs []uuid.UUID) error {
+	if err := r.removeOldMembers(ctx, tx, projectID, userIDs); err != nil {
+		return err
+	}
+	return r.insertMembers(ctx, tx, projectID, userIDs)
+}
+
+func (r *ProjectRepository) removeOldMembers(ctx context.Context, tx pgx.Tx, projectID uuid.UUID, userIDs []uuid.UUID) error {
+	if len(userIDs) == 0 {
+		deleteRemovedMembersQuery := `
+			DELETE FROM project_members
+			WHERE project_id = $1
+		`
+		if _, err := tx.Exec(ctx, deleteRemovedMembersQuery, projectID); err != nil {
+			return fmt.Errorf("failed to remove old project members: %w", err)
+		}
+		return nil
+	}
+
+	pgUUIDs := make([]pgtype.UUID, len(userIDs))
+	for i, id := range userIDs {
+		pgUUIDs[i] = pgtype.UUID{Bytes: id, Valid: true}
+	}
+
+	deleteRemovedMembersQuery := `
+		DELETE FROM project_members
+		WHERE project_id = $1 AND NOT (user_id = ANY($2))
+	`
+	if _, err := tx.Exec(ctx, deleteRemovedMembersQuery, projectID, pgUUIDs); err != nil {
+		return fmt.Errorf("failed to remove old project members: %w", err)
+	}
+	return nil
+}
+
+func (r *ProjectRepository) insertMembers(ctx context.Context, tx pgx.Tx, projectID uuid.UUID, userIDs []uuid.UUID) error {
+	insertMemberQuery := `
+		INSERT INTO project_members (project_id, user_id)
+		VALUES ($1, $2)
+		ON CONFLICT (project_id, user_id) DO NOTHING
+	`
+	for _, uid := range userIDs {
+		if _, err := tx.Exec(ctx, insertMemberQuery, projectID, uid); err != nil {
+			return fmt.Errorf("failed to insert project member %s: %w", uid, err)
+		}
+	}
 	return nil
 }
 
