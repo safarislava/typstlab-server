@@ -14,7 +14,6 @@ import (
 	coderws "github.com/coder/websocket"
 	"github.com/google/uuid"
 
-	collabApp "github.com/safarislava/typstlab-server/internal/application/collaboration"
 	syncApp "github.com/safarislava/typstlab-server/internal/application/sync"
 	domainCollab "github.com/safarislava/typstlab-server/internal/domain/collaboration"
 	domainProject "github.com/safarislava/typstlab-server/internal/domain/project"
@@ -75,31 +74,30 @@ func (m *mockUserService) GetByID(ctx context.Context, id uuid.UUID) (*domainUse
 	return nil, nil
 }
 
-type mockCollaborationService struct {
-	syncInitFunc            func(ctx context.Context, projectID uuid.UUID, req collabApp.SyncInitRequest) (*syncApp.Response, error)
+type mockSyncService struct {
+	syncInitFunc            func(ctx context.Context, req syncApp.SyncInitRequest) (*syncApp.SyncInitResponse, error)
 	applyCRDTUpdateFunc     func(ctx context.Context, fileID uuid.UUID, delta []byte) error
 	applyMetadataUpdateFunc func(ctx context.Context, projectID uuid.UUID, delta []byte) error
 }
 
-func (m *mockCollaborationService) SyncInit(
+func (m *mockSyncService) SyncInit(
 	ctx context.Context,
-	projectID uuid.UUID,
-	req collabApp.SyncInitRequest,
-) (*syncApp.Response, error) {
+	req syncApp.SyncInitRequest,
+) (*syncApp.SyncInitResponse, error) {
 	if m.syncInitFunc != nil {
-		return m.syncInitFunc(ctx, projectID, req)
+		return m.syncInitFunc(ctx, req)
 	}
 	return nil, nil
 }
 
-func (m *mockCollaborationService) ApplyCRDTUpdate(ctx context.Context, fileID uuid.UUID, delta []byte) error {
+func (m *mockSyncService) ApplyCRDTUpdate(ctx context.Context, fileID uuid.UUID, delta []byte) error {
 	if m.applyCRDTUpdateFunc != nil {
 		return m.applyCRDTUpdateFunc(ctx, fileID, delta)
 	}
 	return nil
 }
 
-func (m *mockCollaborationService) ApplyMetadataUpdate(ctx context.Context, projectID uuid.UUID, delta []byte) error {
+func (m *mockSyncService) ApplyMetadataUpdate(ctx context.Context, projectID uuid.UUID, delta []byte) error {
 	if m.applyMetadataUpdateFunc != nil {
 		return m.applyMetadataUpdateFunc(ctx, projectID, delta)
 	}
@@ -143,7 +141,7 @@ func readClientMessage(t *testing.T, client *Client) Message {
 
 type testEnv struct {
 	handler *Handler
-	collab  *mockCollaborationService
+	sync    *mockSyncService
 	hub     *Hub
 	userID  uuid.UUID
 	proj    *domainProject.Project
@@ -168,14 +166,14 @@ func setupTestHandler(t *testing.T) testEnv {
 	}
 
 	hub := NewHub()
-	mockCollab := &mockCollaborationService{}
-	handler := NewHandler(mockUp, hub, mockUser, mockCollab)
+	mockSync := &mockSyncService{}
+	handler := NewHandler(mockUp, hub, mockUser, mockSync)
 	projectID := uuid.New()
 	proj, _ := domainProject.NewProject(projectID, []uuid.UUID{userID}, "Project", time.Now())
 
 	return testEnv{
 		handler: handler,
-		collab:  mockCollab,
+		sync:    mockSync,
 		hub:     hub,
 		userID:  userID,
 		proj:    proj,
@@ -292,7 +290,7 @@ func TestHandler_ServeWS_CollaborationFlow(t *testing.T) {
 	fileID := uuid.New()
 
 	crdtApplied := false
-	env.collab.applyCRDTUpdateFunc = func(_ context.Context, id uuid.UUID, delta []byte) error {
+	env.sync.applyCRDTUpdateFunc = func(_ context.Context, id uuid.UUID, delta []byte) error {
 		if id == fileID && string(delta) == "crdt-update" {
 			crdtApplied = true
 		}

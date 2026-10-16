@@ -10,7 +10,6 @@ import (
 	coderws "github.com/coder/websocket"
 	"github.com/google/uuid"
 
-	collabApp "github.com/safarislava/typstlab-server/internal/application/collaboration"
 	syncApp "github.com/safarislava/typstlab-server/internal/application/sync"
 	domainCollab "github.com/safarislava/typstlab-server/internal/domain/collaboration"
 	domainUser "github.com/safarislava/typstlab-server/internal/domain/user"
@@ -22,9 +21,9 @@ type UserService interface {
 	GetByID(ctx context.Context, id uuid.UUID) (*domainUser.User, error)
 }
 
-// CollaborationService defines the contract for document synchronization operations.
-type CollaborationService interface {
-	SyncInit(ctx context.Context, projectID uuid.UUID, req collabApp.SyncInitRequest) (*syncApp.Response, error)
+// SyncService defines the contract for document synchronization operations.
+type SyncService interface {
+	SyncInit(ctx context.Context, req syncApp.SyncInitRequest) (*syncApp.SyncInitResponse, error)
 	ApplyCRDTUpdate(ctx context.Context, fileID uuid.UUID, delta []byte) error
 	ApplyMetadataUpdate(ctx context.Context, projectID uuid.UUID, delta []byte) error
 }
@@ -36,13 +35,13 @@ type ConnectionUpgrader interface {
 
 type messageHandler func(ctx context.Context, client *Client, rawPayload json.RawMessage) error
 
-// Handler handles WebSocket connection establishment, message dispatching, and collaboration.
+// Handler handles WebSocket connection establishment, message dispatching, and synchronization.
 type Handler struct {
-	upgrader             ConnectionUpgrader
-	hub                  *Hub
-	userService          UserService
-	collaborationService CollaborationService
-	handlers             map[domainCollab.MessageType]messageHandler
+	upgrader    ConnectionUpgrader
+	hub         *Hub
+	userService UserService
+	syncService SyncService
+	handlers    map[domainCollab.MessageType]messageHandler
 }
 
 // NewHandler creates a new WebSocket Handler.
@@ -50,13 +49,13 @@ func NewHandler(
 	upgrader ConnectionUpgrader,
 	hub *Hub,
 	userService UserService,
-	collaborationService CollaborationService,
+	syncService SyncService,
 ) *Handler {
 	h := &Handler{
-		upgrader:             upgrader,
-		hub:                  hub,
-		userService:          userService,
-		collaborationService: collaborationService,
+		upgrader:    upgrader,
+		hub:         hub,
+		userService: userService,
+		syncService: syncService,
 	}
 	h.registerHandlers()
 	return h
@@ -170,12 +169,13 @@ func (h *Handler) handleSyncInit(ctx context.Context, client *Client, rawPayload
 		return fmt.Errorf("unmarshal sync init payload: %w", err)
 	}
 
-	appReq := collabApp.SyncInitRequest{
+	appReq := syncApp.SyncInitRequest{
+		ProjectID:           client.ProjectID(),
 		MetadataStateVector: payload.MetadataStateVector,
 		ContentVectors:      payload.ContentVectors,
 	}
 
-	resp, err := h.collaborationService.SyncInit(ctx, client.ProjectID(), appReq)
+	resp, err := h.syncService.SyncInit(ctx, appReq)
 	if err != nil {
 		return fmt.Errorf("execute sync init: %w", err)
 	}
@@ -222,7 +222,7 @@ func (h *Handler) handleCRDTUpdate(ctx context.Context, client *Client, rawPaylo
 		return fmt.Errorf("unmarshal crdt update payload: %w", err)
 	}
 
-	if err := h.collaborationService.ApplyCRDTUpdate(ctx, req.FileID, req.Delta); err != nil {
+	if err := h.syncService.ApplyCRDTUpdate(ctx, req.FileID, req.Delta); err != nil {
 		return fmt.Errorf("apply crdt changes: %w", err)
 	}
 
@@ -258,7 +258,7 @@ func (h *Handler) handleMetadataUpdate(ctx context.Context, client *Client, rawP
 		return fmt.Errorf("unmarshal metadata update payload: %w", err)
 	}
 
-	if err := h.collaborationService.ApplyMetadataUpdate(ctx, client.ProjectID(), req.Delta); err != nil {
+	if err := h.syncService.ApplyMetadataUpdate(ctx, client.ProjectID(), req.Delta); err != nil {
 		return fmt.Errorf("apply metadata update: %w", err)
 	}
 
