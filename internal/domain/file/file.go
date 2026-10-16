@@ -19,6 +19,7 @@ type File interface {
 	Name() string
 	Type() Type
 	UpdatedAt() time.Time
+	Rename(name string) error
 }
 
 type BinaryFile struct {

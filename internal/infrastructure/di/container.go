@@ -12,18 +12,14 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	appAuth "github.com/safarislava/typstlab-server/internal/application/auth"
-	collaborationApp "github.com/safarislava/typstlab-server/internal/application/collaboration"
 	entryApp "github.com/safarislava/typstlab-server/internal/application/entry"
 	fileApp "github.com/safarislava/typstlab-server/internal/application/file"
 	binaryFile "github.com/safarislava/typstlab-server/internal/application/file/binary"
 	typstFile "github.com/safarislava/typstlab-server/internal/application/file/typst"
 	inviteApp "github.com/safarislava/typstlab-server/internal/application/invite"
-	metadataApp "github.com/safarislava/typstlab-server/internal/application/metadata"
 	projectApp "github.com/safarislava/typstlab-server/internal/application/project"
 	sessionApp "github.com/safarislava/typstlab-server/internal/application/session"
 	syncApp "github.com/safarislava/typstlab-server/internal/application/sync"
-	syncFile "github.com/safarislava/typstlab-server/internal/application/sync/file"
-	syncMetadata "github.com/safarislava/typstlab-server/internal/application/sync/metadata"
 	userApp "github.com/safarislava/typstlab-server/internal/application/user"
 	"github.com/safarislava/typstlab-server/internal/domain/user"
 	"github.com/safarislava/typstlab-server/internal/infrastructure/auth"
@@ -49,7 +45,7 @@ type FileRepository interface {
 	fileApp.Repository
 	typstFile.Repository
 	binaryFile.Repository
-	metadataApp.Repository
+	syncApp.MetadataRepository
 }
 
 // Option configures DI container initialization.
@@ -138,20 +134,8 @@ type Container struct {
 	fileService     *fileApp.Service
 	fileServiceOnce sync.Once
 
-	metadataService     *metadataApp.Service
-	metadataServiceOnce sync.Once
-
-	syncMetadataService     *syncMetadata.Service
-	syncMetadataServiceOnce sync.Once
-
-	syncFileService     *syncFile.Service
-	syncFileServiceOnce sync.Once
-
 	syncService     *syncApp.Service
 	syncServiceOnce sync.Once
-
-	collaborationService     *collaborationApp.Service
-	collaborationServiceOnce sync.Once
 
 	userService     *userApp.Service
 	userServiceOnce sync.Once
@@ -429,41 +413,14 @@ func (c *Container) FileService() *fileApp.Service {
 	return c.fileService
 }
 
-// MetadataService lazily initializes and returns the metadata application service.
-func (c *Container) MetadataService() *metadataApp.Service {
-	c.metadataServiceOnce.Do(func() {
-		c.metadataService = metadataApp.NewService(c.FileRepo())
-	})
-	return c.metadataService
-}
-
-// SyncMetadataService lazily initializes and returns the metadata sync service.
-func (c *Container) SyncMetadataService() *syncMetadata.Service {
-	c.syncMetadataServiceOnce.Do(func() {
-		c.syncMetadataService = syncMetadata.NewService(c.MetadataService(), c.YjsMerger())
-	})
-	return c.syncMetadataService
-}
-
-// SyncFileService lazily initializes and returns the file sync service.
-func (c *Container) SyncFileService() *syncFile.Service {
-	c.syncFileServiceOnce.Do(func() {
-		c.syncFileService = syncFile.NewService(
-			c.FileService(),
-			c.TypstFileService(),
-			c.YjsMerger(),
-			c.YjsMerger(),
-		)
-	})
-	return c.syncFileService
-}
-
 // SyncService lazily initializes and returns the sync application service.
 func (c *Container) SyncService() *syncApp.Service {
 	c.syncServiceOnce.Do(func() {
 		c.syncService = syncApp.NewService(
-			c.SyncMetadataService(),
-			c.SyncFileService(),
+			c.FileRepo(),
+			c.FileService(),
+			c.TypstFileService(),
+			c.YjsMerger(),
 		)
 	})
 	return c.syncService
@@ -578,14 +535,6 @@ func (c *Container) Hub() *websocket.Hub {
 	return c.wsHub
 }
 
-// CollaborationService lazily initializes and returns the collaboration application service.
-func (c *Container) CollaborationService() *collaborationApp.Service {
-	c.collaborationServiceOnce.Do(func() {
-		c.collaborationService = collaborationApp.NewService(c.SyncService())
-	})
-	return c.collaborationService
-}
-
 // WSHandler lazily initializes and returns the WebSocket handler.
 func (c *Container) WSHandler() *websocket.Handler {
 	c.wsHandlerOnce.Do(func() {
@@ -593,7 +542,7 @@ func (c *Container) WSHandler() *websocket.Handler {
 			c.WSUpgrader(),
 			c.Hub(),
 			c.UserService(),
-			c.CollaborationService(),
+			c.SyncService(),
 		)
 	})
 	return c.wsHandler
