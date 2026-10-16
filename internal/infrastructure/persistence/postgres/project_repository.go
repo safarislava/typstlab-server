@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	domain "github.com/safarislava/typstlab-server/internal/domain/project"
@@ -43,13 +44,30 @@ func (r *ProjectRepository) Save(ctx context.Context, p *domain.Project) error {
 		return fmt.Errorf("failed to upsert project: %w", err)
 	}
 
-	deleteRemovedMembersQuery := `
-		DELETE FROM project_members
-		WHERE project_id = $1 AND NOT (user_id = ANY($2))
-	`
-	_, err = tx.Exec(ctx, deleteRemovedMembersQuery, p.ID(), p.UserIDs())
-	if err != nil {
-		return fmt.Errorf("failed to remove old project members: %w", err)
+	userIDs := p.UserIDs()
+	if len(userIDs) == 0 {
+		deleteRemovedMembersQuery := `
+			DELETE FROM project_members
+			WHERE project_id = $1
+		`
+		_, err = tx.Exec(ctx, deleteRemovedMembersQuery, p.ID())
+		if err != nil {
+			return fmt.Errorf("failed to remove old project members: %w", err)
+		}
+	} else {
+		pgUUIDs := make([]pgtype.UUID, len(userIDs))
+		for i, id := range userIDs {
+			pgUUIDs[i] = pgtype.UUID{Bytes: id, Valid: true}
+		}
+
+		deleteRemovedMembersQuery := `
+			DELETE FROM project_members
+			WHERE project_id = $1 AND NOT (user_id = ANY($2))
+		`
+		_, err = tx.Exec(ctx, deleteRemovedMembersQuery, p.ID(), pgUUIDs)
+		if err != nil {
+			return fmt.Errorf("failed to remove old project members: %w", err)
+		}
 	}
 
 	insertMemberQuery := `

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -30,6 +31,12 @@ func NewPool(ctx context.Context, databaseURL string) (*pgxpool.Pool, error) {
 	config.MaxConnIdleTime = defaultMaxConnIdleTime
 	config.HealthCheckPeriod = defaultHealthCheckPeriod
 	config.ConnConfig.DefaultQueryExecMode = pgx.QueryExecModeExec
+
+	config.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
+		conn.TypeMap().RegisterDefaultPgType([]uuid.UUID{}, "_uuid")
+		conn.TypeMap().RegisterDefaultPgType(uuid.UUID{}, "uuid")
+		return nil
+	}
 
 	pool, err := pgxpool.NewWithConfig(ctx, config)
 	if err != nil {
