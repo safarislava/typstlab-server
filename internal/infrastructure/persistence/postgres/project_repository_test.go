@@ -58,6 +58,9 @@ func TestProjectRepository_ClosedPool(t *testing.T) {
 }
 
 func TestEncodePlan(t *testing.T) {
+	t.Parallel()
+
+	const expectedEncodedUUID = "{bc4b4a5d-fe87-42bc-b994-293c482ad5d3}"
 	m := pgtype.NewMap()
 
 	// By default, []pgtype.UUID has a valid text encode plan
@@ -70,7 +73,7 @@ func TestEncodePlan(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected encode error for []pgtype.UUID: %v", err)
 	}
-	if string(buf) != "{bc4b4a5d-fe87-42bc-b994-293c482ad5d3}" {
+	if string(buf) != expectedEncodedUUID {
 		t.Errorf("unexpected encoded string: %s", string(buf))
 	}
 
@@ -84,7 +87,7 @@ func TestEncodePlan(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected encode error for registered []uuid.UUID: %v", err)
 	}
-	if string(bufReg) != "{bc4b4a5d-fe87-42bc-b994-293c482ad5d3}" {
+	if string(bufReg) != expectedEncodedUUID {
 		t.Errorf("unexpected encoded string: %s", string(bufReg))
 	}
 }
