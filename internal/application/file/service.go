@@ -38,30 +38,50 @@ func NewService(repo Repository, typstService TypstService, binaryService Binary
 	}
 }
 
+// FindByID retrieves a file aggregate by ID.
+func (s *Service) FindByID(ctx context.Context, fileID uuid.UUID) (domainFile.File, error) {
+	if tf, err := s.typst.GetByID(ctx, fileID); err == nil {
+		return tf, nil
+	}
+	if bf, err := s.binary.GetByID(ctx, fileID); err == nil {
+		return bf, nil
+	}
+	return nil, fmt.Errorf("file not found: %s", fileID)
+}
+
+// Save persists a modified file aggregate.
+func (s *Service) Save(ctx context.Context, f domainFile.File) error {
+	switch file := f.(type) {
+	case *domainFile.TypstFile:
+		if err := s.typst.Save(ctx, file); err != nil {
+			return fmt.Errorf("failed to save typst file: %w", err)
+		}
+		return nil
+	case *domainFile.BinaryFile:
+		if err := s.binary.Save(ctx, file); err != nil {
+			return fmt.Errorf("failed to save binary file: %w", err)
+		}
+		return nil
+	default:
+		return fmt.Errorf("unsupported file type: %T", f)
+	}
+}
+
+// RenameFile mutates the file name on the domain aggregate and persists it.
 func (s *Service) RenameFile(ctx context.Context, fileID uuid.UUID, newName string) error {
-	tf, errTypst := s.typst.GetByID(ctx, fileID)
-	if errTypst == nil {
-		if err := tf.Rename(newName); err != nil {
-			return fmt.Errorf("failed to rename typst file %s: %w", fileID, err)
-		}
-		if err := s.typst.Save(ctx, tf); err != nil {
-			return fmt.Errorf("failed to save renamed typst file %s: %w", fileID, err)
-		}
-		return nil
+	f, err := s.FindByID(ctx, fileID)
+	if err != nil {
+		return err
 	}
 
-	bf, errBinary := s.binary.GetByID(ctx, fileID)
-	if errBinary == nil {
-		if err := bf.Rename(newName); err != nil {
-			return fmt.Errorf("failed to rename binary file %s: %w", fileID, err)
-		}
-		if err := s.binary.Save(ctx, bf); err != nil {
-			return fmt.Errorf("failed to save renamed binary file %s: %w", fileID, err)
-		}
-		return nil
+	if err := f.Rename(newName); err != nil {
+		return fmt.Errorf("rename file %s: %w", fileID, err)
 	}
 
-	return fmt.Errorf("file not found: %s", fileID)
+	if err := s.Save(ctx, f); err != nil {
+		return fmt.Errorf("save renamed file: %w", err)
+	}
+	return nil
 }
 
 func (s *Service) DeleteFile(ctx context.Context, fileID uuid.UUID) error {
